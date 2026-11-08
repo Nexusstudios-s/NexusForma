@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+.nexus_usage.sqlite3
+.nexus_usage.sqlite3-*
