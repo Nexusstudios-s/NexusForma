@@ -1,0 +1,131 @@
+/* Nexus Forma — Console / mejora visual progresiva.
+   No cambia nombres de elementos, atributos data-* ni controles del panel. */
+#adminDialog.admin-dialog {
+  width: min(1280px, calc(100vw - 32px)); max-width: 1280px;
+  height: min(870px, calc(100dvh - 32px)); max-height: min(870px, calc(100dvh - 32px));
+  border: 1px solid var(--stroke-2); border-radius: 24px;
+  background: var(--dialog-bg); color: var(--text);
+  box-shadow: 0 34px 110px rgba(0,0,0,.55), inset 0 1px 0 var(--inner);
+}
+#adminDialog::backdrop { background: rgba(4, 7, 14, .72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+#adminDialog .admin-panel {
+  display: grid !important; grid-template-columns: 225px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  min-height: 0; height: 100%; max-height: 100%; overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 3%, transparent), transparent 38%),var(--dialog-bg);
+}
+#adminDialog .admin-panel-head {
+  position: relative; grid-column: 1 / -1; grid-row: 1;
+  min-height: 106px; padding: 22px 28px; overflow: hidden;
+  border-bottom: 1px solid var(--stroke-2);
+  background: radial-gradient(ellipse at 5% 0, color-mix(in srgb, var(--accent) 14%, transparent), transparent 55%),
+              linear-gradient(110deg, var(--glass-2), transparent 80%);
+}
+#adminDialog .admin-panel-head::after { position:absolute; left:28px; right:28px; bottom:0; height:1px; background:linear-gradient(90deg,var(--accent-line),transparent 48%); content:""; pointer-events:none; }
+#adminDialog .admin-heading-icon {
+  width: 54px; height: 54px; border-radius: 18px;
+  background: linear-gradient(140deg,var(--accent-soft), color-mix(in srgb,var(--accent-2) 10%,transparent));
+  box-shadow: inset 0 1px 0 var(--inner), 0 14px 28px -14px color-mix(in srgb,var(--accent) 45%,transparent);
+}
+#adminDialog .admin-heading-icon svg { width: 24px; height:24px; }
+#adminDialog .admin-heading { align-items:center; gap:16px; }
+#adminDialog .admin-brand-kicker { letter-spacing:.15em; color: var(--accent-text); font-size: 10px; font-weight: 800; }
+#adminDialog .admin-brand-kicker span { padding:0 4px; opacity:.55; }
+#adminDialog .admin-panel-head h2 { font-size: clamp(22px, 2.1vw, 29px); letter-spacing:-.038em; margin-top:4px; }
+#adminDialog .admin-heading-subtitle { margin:5px 0 0; color:var(--text-3); font-size:12px; }
+#adminDialog .admin-head-actions { margin:0; gap:10px; }
+#adminDialog .admin-console-status { display:inline-flex; align-items:center; gap:8px; padding:9px 12px; border:1px solid var(--stroke); border-radius:999px; background:var(--glass); color:var(--text-2); font-size:11px; font-weight:700; white-space:nowrap; }
+#adminDialog .admin-console-status i { display:block; width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 14%,transparent); }
+#adminDialog .admin-refresh,#adminDialog .admin-close { width:42px; height:42px; border-radius:13px; border:1px solid var(--stroke-2); background:var(--glass); color:var(--text-2); }
+#adminDialog .admin-close { position:static !important; inset:auto !important; transform:none !important; margin:0 !important; }
+#adminDialog .admin-close:hover,#adminDialog .admin-refresh:hover { background:var(--glass-2); color:var(--text); }
+#adminDialog .admin-tabs {
+  grid-column:1; grid-row:2; min-height:0;
+  position:relative; z-index:1; display:flex; flex-direction:column; align-items:stretch;
+  gap:5px; margin:0; padding:23px 12px 20px;
+  border:0; border-right:1px solid var(--stroke);
+  background:color-mix(in srgb,var(--glass-solid) 35%,transparent);
+  overflow-y:auto; overflow-x:hidden; scrollbar-width:thin;
+}
+#adminDialog .admin-tabs::before { content:"SECCIONES"; padding:0 14px 9px; color:var(--text-3); font-size:10px; font-weight:800; letter-spacing:.14em; }
+#adminDialog .admin-tabs button {
+  width:100%; min-height:43px; border-radius:12px; padding:0 12px;
+  text-align:left; justify-content:flex-start; gap:10px;
+  border:1px solid transparent; color:var(--text-2); font-size:12.5px; font-weight:650;
+  transition:background .18s,border-color .18s,color .18s,transform .18s;
+}
+#adminDialog .admin-tab-icon { width:17px; height:17px; flex:none; opacity:.74; }
+#adminDialog .admin-tabs button:hover { border-color:var(--stroke); background:var(--glass-2); color:var(--text); }
+#adminDialog .admin-tabs button.active {
+  border-color:var(--accent-line); color:var(--accent-text);
+  background:linear-gradient(100deg,var(--accent-soft),color-mix(in srgb,var(--accent) 3%,transparent));
+  box-shadow:inset 3px 0 0 var(--accent),inset 0 1px 0 var(--inner);
+}
+#adminDialog .admin-tabs button.active .admin-tab-icon { opacity:1; }
+#adminDialog .admin-tabs button span { margin-left:auto; min-width:20px; height:20px; padding:0 5px; border:1px solid var(--accent-line); border-radius:7px; font-size:10px; }
+#adminDialog .admin-panel > .admin-view { grid-column:2; grid-row:2; min-height:0; min-width:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--stroke-2) transparent; }
+#adminDialog .admin-panel > .admin-view[hidden] { display:none !important; }
+#adminDialog .admin-list-wrap,#adminDialog .admin-form-wrap { padding:26px; gap:17px; }
+#adminDialog .admin-list-wrap { border-right:1px solid var(--stroke); background:linear-gradient(160deg,var(--glass),transparent 50%); }
+#adminDialog .admin-section-head h3 { font-size:17px; }
+#adminDialog .admin-search { min-height:46px; border-color:var(--stroke-2); border-radius:13px; background:var(--input); }
+#adminDialog .admin-search:focus-within { border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-soft); }
+#adminDialog .admin-user-item { min-height:69px; border:1px solid var(--stroke); border-radius:13px; background:var(--glass); }
+#adminDialog .admin-user-item:hover { border-color:var(--stroke-2); background:var(--glass-2); }
+#adminDialog .admin-user-item.active { border-color:var(--accent-line); background:var(--accent-soft); box-shadow:inset 3px 0 var(--accent); }
+#adminDialog .admin-form-wrap .admin-field { min-width:0; }
+#adminDialog .profile-name-input:focus,#adminDialog .admin-model-fields input:focus,#adminDialog textarea:focus,#adminDialog select:focus { outline:2px solid var(--accent-line); outline-offset:1px; border-color:var(--accent-line); }
+#adminDialog .admin-form-wrap .profile-name-input { min-height:42px; border-radius:11px; }
+#adminDialog .premium-models { border:1px solid var(--stroke); border-radius:15px; padding:14px; background:var(--glass); }
+#adminDialog .admin-form-footer { padding-top:16px; border-top:1px solid var(--stroke); }
+#adminDialog .admin-form-footer .btn,#adminDialog .admin-config-actions .btn { border-radius:11px; min-height:42px; }
+#adminDialog .admin-plans-view,#adminDialog .admin-model-view,#adminDialog .admin-payments-view,#adminDialog .admin-feedback-view,#adminDialog .admin-methods-view,#adminDialog .admin-token-packages-view,#adminDialog .admin-customization-view { padding:26px 28px 30px; }
+#adminDialog .admin-view > .admin-section-head { margin-bottom:20px; }
+#adminDialog .admin-view > .admin-section-head h3 { font-size:20px; letter-spacing:-.025em; }
+#adminDialog .admin-model-row,#adminDialog .admin-plan-row,#adminDialog .admin-method-card,#adminDialog .admin-payment-detail,#adminDialog .admin-payment-item,#adminDialog .admin-plan-feature-editor,#adminDialog .admin-plan-comparison-editor {
+  border-color:var(--stroke-2); border-radius:16px;
+  background:linear-gradient(145deg,var(--glass-2),var(--glass));
+  box-shadow:inset 0 1px 0 var(--inner);
+}
+#adminDialog .admin-model-row:hover,#adminDialog .admin-plan-row:hover,#adminDialog .admin-method-card:hover { border-color:var(--accent-line); }
+#adminDialog .admin-payment-item:hover { border-color:var(--accent-line); background:var(--glass-2); }
+#adminDialog .admin-config-actions { margin-top:18px; padding:14px 0 5px; }
+#adminDialog button:focus-visible,#adminDialog a:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+#adminDialog .admin-payments-layout { gap:16px; }
+#adminDialog .admin-payment-detail { padding:20px; }
+html[data-theme="light"] #adminDialog .admin-tabs { background:rgba(235,239,246,.74); }
+@media (max-width: 980px) {
+  #adminDialog.admin-dialog { width:calc(100vw - 20px); height:calc(100dvh - 20px); max-height:calc(100dvh - 20px); border-radius:19px; }
+  #adminDialog .admin-panel { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto minmax(0,1fr) !important; }
+  #adminDialog .admin-panel-head { grid-column:1; grid-row:1; min-height:90px; padding:16px 20px; }
+  #adminDialog .admin-tabs { grid-column:1; grid-row:2; flex-direction:row; align-items:center; padding:10px 15px; border-right:0; border-bottom:1px solid var(--stroke); gap:7px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+  #adminDialog .admin-tabs::before { display:none; }
+  #adminDialog .admin-tabs button { width:auto; min-height:40px; padding:0 12px; font-size:12px; white-space:nowrap; }
+  #adminDialog .admin-tabs button.active { box-shadow:inset 0 -2px 0 var(--accent); }
+  #adminDialog .admin-panel > .admin-view { grid-column:1; grid-row:3; }
+  #adminDialog .admin-list-wrap,#adminDialog .admin-form-wrap { padding:20px; }
+}
+@media (max-width: 700px) {
+  #adminDialog .admin-panel-head { min-height:78px; padding:13px 14px; }
+  #adminDialog .admin-heading { gap:10px; }
+  #adminDialog .admin-heading-icon { width:39px; height:39px; border-radius:13px; }
+  #adminDialog .admin-heading-icon svg { width:19px; height:19px; }
+  #adminDialog .admin-panel-head h2 { font-size:19px; }
+  #adminDialog .admin-heading-subtitle,#adminDialog .admin-console-status { display:none; }
+  #adminDialog .admin-brand-kicker { font-size:9px; }
+  #adminDialog .admin-head-actions { gap:6px; }
+  #adminDialog .admin-refresh,#adminDialog .admin-close { width:36px; height:36px; }
+  #adminDialog .admin-tabs { padding:8px 10px; }
+  #adminDialog .admin-tabs button { min-height:38px; gap:7px; }
+  #adminDialog .admin-grid { grid-template-columns:minmax(0,1fr); }
+  #adminDialog .admin-list-wrap { max-height:230px; border-right:0; border-bottom:1px solid var(--stroke); }
+  #adminDialog .admin-form-wrap { overflow:visible; }
+  #adminDialog .admin-list-wrap,#adminDialog .admin-form-wrap { padding:16px; }
+  #adminDialog .admin-plans-view,#adminDialog .admin-model-view,#adminDialog .admin-payments-view,#adminDialog .admin-feedback-view,#adminDialog .admin-methods-view,#adminDialog .admin-token-packages-view,#adminDialog .admin-customization-view { padding:18px 16px 22px; }
+  #adminDialog .admin-model-config,#adminDialog .admin-plans-config,#adminDialog .admin-method-grid { grid-template-columns:minmax(0,1fr); }
+  #adminDialog .admin-plan-row { grid-template-columns:80px minmax(0,1fr); }
+  #adminDialog .admin-payments-layout { grid-template-columns:minmax(0,1fr); }
+  #adminDialog .admin-config-actions { flex-wrap:wrap; }
+}
+@media (prefers-reduced-motion:reduce) { #adminDialog .admin-tabs button,#adminDialog .admin-user-item { transition:none; } }

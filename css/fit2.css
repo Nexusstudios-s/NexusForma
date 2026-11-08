@@ -1,0 +1,52 @@
+
+/* Ajuste de escala y sidebar.
+   Zoom fijo al 80 % en escritorio.
+   El sidebar mantiene su altura y scroll interno. */
+
+:root {
+  --ui-zoom: 1;
+  --vh100: calc(100dvh / var(--ui-zoom));
+}
+
+/* ---------- 1) Zoom fijo al 80 % ---------- */
+@media (min-width: 761px) {
+  @supports (zoom: 1) {
+    :root {
+      --ui-zoom: .8;
+    }
+
+    html {
+      zoom: var(--ui-zoom);
+    }
+
+    /* Compensar las unidades de altura con zoom */
+    .shell {
+      min-height: var(--vh100);
+    }
+
+    .sidebar {
+      height: calc(var(--vh100) - 36px);
+    }
+
+    .chat-workspace {
+      height: calc(var(--vh100) - 36px - 62px - 20px - 20px);
+    }
+
+    .explore-stage {
+      height: clamp(520px, calc(var(--vh100) - 210px), 860px);
+    }
+  }
+}
+
+/* ---------- 2) Pantallas medianas ---------- */
+@media (min-width: 761px) and (max-width: 1100px) {
+  @supports (zoom: 1) {
+    .sidebar {
+      height: calc(var(--vh100) - 28px);
+    }
+
+    .chat-workspace {
+      height: calc(var(--vh100) - 28px - 62px - 20px - 14px);
+    }
+  }
+}
