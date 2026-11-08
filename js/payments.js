@@ -1,6 +1,6 @@
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, orderBy, query,
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query,
   serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch,
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { auth, authReady, db } from './firebase.js';
@@ -36,6 +36,7 @@ const PLAN_DEFAULTS = [
   { id: 'premium', name: 'Premium', description: 'Acceso a todos los modelos premium por un periodo fijo.', price: '19', currency: 'USD', durationDays: 30, monthlyTokens: 1500000, badge: '30 días', periodLabel: '30 días', benefits: ['1.500.000 tokens por ciclo', 'Nexus-Premium, SST, Sonet y Astra', 'Ideal para uso intensivo', 'Se puede renovar fácilmente'], features: CORE_PLAN_FEATURES, enabled: true, featured: false, backgroundColor: '', backgroundImage: '' },
   { id: 'rental', name: 'Alquiler', description: 'Compra solo los modelos que quieras por días o por temporada.', price: '6', currency: 'USD', durationDays: 7, monthlyTokens: 2000000, badge: 'Alquiler', periodLabel: '7 días', benefits: ['2.000.000 tokens por cada modelo seleccionado', 'Modelos premium a la carta', 'Sin suscripción anual', 'Flexible y sin permanencia'], features: CORE_PLAN_FEATURES, enabled: true, featured: false, backgroundColor: '', backgroundImage: '' },
   { id: 'model-pack', name: 'Modelos premium', description: 'Acceso por días a los modelos que elijas.', price: '39', currency: 'USD', durationDays: 90, monthlyTokens: 2000000, badge: '90 días', periodLabel: '90 días', benefits: ['2.000.000 tokens para cada modelo', 'Elige Nexus-Premium, SST, Sonet y Astra', 'Flexibilidad total', 'Se renueva al comprar de nuevo'], features: CORE_PLAN_FEATURES, enabled: true, featured: false, backgroundColor: '', backgroundImage: '' },
+  { id: 'custom-plan', name: 'Personalizado', description: 'Combina lo que necesitas y recibe una propuesta a medida.', price: '', currency: 'USD', durationDays: 30, monthlyTokens: 500000, badge: 'A tu medida', periodLabel: 'según tu selección', benefits: ['Elige funciones de distintos planes', 'Añade modelos premium a tu solicitud', 'Propón duración y tokens por ciclo', 'El equipo revisa cada solicitud'], features: CORE_PLAN_FEATURES, enabled: true, featured: true, backgroundColor: '', backgroundImage: '' },
 ];
 const TOKEN_PACKAGE_DEFAULTS = [];
 const DEFAULT_WEB_CUSTOMIZATION = {
@@ -70,11 +71,13 @@ const DEFAULT_LOGIN_BRANDING = {
 
 let activeUser = null;
 let userProfile = {};
-let currentSettings = { models: MODEL_DEFAULTS, paymentMethods: METHOD_DEFAULTS, plans: PLAN_DEFAULTS, tokenPackages: TOKEN_PACKAGE_DEFAULTS, webCustomization: DEFAULT_WEB_CUSTOMIZATION };
+let currentSettings = { models: MODEL_DEFAULTS, paymentMethods: METHOD_DEFAULTS, plans: PLAN_DEFAULTS, planFeatures: PLAN_FEATURE_OPTIONS, comparisonRows: [], tokenPackages: TOKEN_PACKAGE_DEFAULTS, webCustomization: DEFAULT_WEB_CUSTOMIZATION };
 let currentLoginBranding = { ...DEFAULT_LOGIN_BRANDING };
 let currentPurchase = null;
 let adminPayments = [];
 let selectedPayment = null;
+let adminFeedbackItems = [];
+let selectedFeedback = null;
 let notificationUnsubscribe = null;
 let profileUnsubscribe = null;
 
@@ -111,6 +114,16 @@ function normalizeSettings(data = {}) {
       name: rawMethods[id]?.name || METHOD_DEFAULTS[id]?.name || id,
     };
   }
+  const planFeatureMap = new Map(PLAN_FEATURE_OPTIONS.map(feature => [feature.id, feature]));
+  if (Array.isArray(data.planFeatures)) {
+    for (const feature of data.planFeatures) {
+      if (!feature || !/^custom-[a-z0-9][a-z0-9-]{0,47}$/.test(feature.id || '') || typeof feature.label !== 'string') continue;
+      const label = feature.label.trim().slice(0, 64);
+      if (label) planFeatureMap.set(feature.id, {id: feature.id, label});
+    }
+  }
+  const planFeatures = [...planFeatureMap.values()];
+  const planFeatureIds = new Set(planFeatures.map(feature => feature.id));
   const savedPlans = Array.isArray(data.plans) ? data.plans : [];
   const planMap = new Map(savedPlans.map(plan => [plan.id, plan]));
   const plans = PLAN_DEFAULTS.map(plan => {
@@ -122,7 +135,7 @@ function normalizeSettings(data = {}) {
       backgroundImage: safeHttpsUrl(savedPlan.backgroundImage || ''),
       backgroundVideo: safeHttpsUrl(savedPlan.backgroundVideo || ''),
       features: Array.isArray(savedPlan.features)
-        ? savedPlan.features.filter(feature => PLAN_FEATURE_OPTIONS.some(option => option.id === feature))
+        ? savedPlan.features.filter(feature => planFeatureIds.has(feature))
         : plan.features,
     };
   });
@@ -140,7 +153,7 @@ function normalizeSettings(data = {}) {
       badge: String(savedPlan.badge || '').slice(0, 40),
       periodLabel: String(savedPlan.periodLabel || '').slice(0, 40),
       benefits: Array.isArray(savedPlan.benefits) ? savedPlan.benefits.filter(item => typeof item === 'string').slice(0, 12) : [],
-      features: Array.isArray(savedPlan.features) ? savedPlan.features.filter(feature => PLAN_FEATURE_OPTIONS.some(option => option.id === feature)) : CORE_PLAN_FEATURES,
+      features: Array.isArray(savedPlan.features) ? savedPlan.features.filter(feature => planFeatureIds.has(feature)) : CORE_PLAN_FEATURES,
       enabled: savedPlan.enabled === true,
       featured: savedPlan.featured === true,
       backgroundColor: /^#[0-9a-f]{6}$/i.test(savedPlan.backgroundColor || '') ? savedPlan.backgroundColor : '',
@@ -149,6 +162,23 @@ function normalizeSettings(data = {}) {
       discountPercent: Math.max(0, Math.min(90, Number.parseInt(savedPlan.discountPercent, 10) || 0)),
     });
   }
+  const planIds = new Set(plans.map(plan => plan.id));
+  const comparisonRows = (Array.isArray(data.comparisonRows) ? data.comparisonRows : [])
+    .filter(row => row && typeof row.label === 'string' && row.label.trim())
+    .slice(0, 20)
+    .map((row, index) => {
+      const values = {};
+      if (row.values && typeof row.values === 'object' && !Array.isArray(row.values)) {
+        for (const planId of planIds) {
+          if (typeof row.values[planId] === 'string') values[planId] = row.values[planId].slice(0, 160);
+        }
+      }
+      return {
+        id: String(row.id || `comparison-${index + 1}`).slice(0, 64),
+        label: row.label.trim().slice(0, 60),
+        values,
+      };
+    });
   const savedTokenPackages = Array.isArray(data.tokenPackages) ? data.tokenPackages : TOKEN_PACKAGE_DEFAULTS;
   const tokenPackages = savedTokenPackages
     .filter(item => item && /^[a-z0-9][a-z0-9-]{0,47}$/.test(item.id || ''))
@@ -162,7 +192,7 @@ function normalizeSettings(data = {}) {
       enabled: item.enabled === true,
     }));
   const savedCustomization = data.webCustomization || data.personalization || {};
-  return { models, paymentMethods, plans, tokenPackages, webCustomization: normalizeWebCustomization(savedCustomization) };
+  return { models, paymentMethods, plans, planFeatures, comparisonRows, tokenPackages, webCustomization: normalizeWebCustomization(savedCustomization) };
 }
 
 function paidModelIds() {
@@ -446,6 +476,7 @@ function setAdminTab(tab) {
     view.hidden = !selected;
   });
   if (tab === 'payments') loadAdminPayments();
+  if (tab === 'feedback') loadAdminFeedback();
 }
 
 function compressLoginBackgroundImage(file, maxCharacters = 640000) {
@@ -1042,16 +1073,19 @@ function renderModelSettings() {
 }
 
 function readModelSettings() {
+  const disabledVoiceModels = [];
   const models = [...document.querySelectorAll('.admin-model-row')].map(row => {
     const get = field => row.querySelector(`[data-model-field="${field}"]`);
     const base = currentSettings.models.find(item => item.id === row.dataset.modelId) || { id: row.dataset.modelId, name: row.dataset.modelId };
     const id = (get('id')?.value || row.dataset.modelId).trim();
     if (!/^Nexus-?[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/.test(id)) throw new Error(`ID de modelo no válido: ${id}`);
     const providerModel = get('providerModel').value.trim();
-    if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(providerModel)) throw new Error(`Configura un ID de OpenRouter válido para ${id}.`);
-    if (get('enabled').checked && (/^fish-audio\//i.test(providerModel) || /\/(?:tts|text-to-speech)(?:[-/:.]|$)/i.test(providerModel))) {
-      throw new Error(`${providerModel} es de voz, no de chat. En “Modelo conversacional” usa un ID de OpenRouter para chat; la foto del modelo solo es decorativa.`);
-    }
+    const enabled = get('enabled').checked;
+    if (providerModel && !/^[A-Za-z0-9._-]+\/[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(providerModel)) throw new Error(`Configura un ID de OpenRouter válido para ${id}.`);
+    if (enabled && !providerModel) throw new Error(`Configura un modelo conversacional de OpenRouter para ${id} antes de activarlo.`);
+    const isTextToSpeech = /^fish-audio\//i.test(providerModel) || /\/(?:tts|text-to-speech)(?:[-/:.]|$)/i.test(providerModel);
+    if (enabled && isTextToSpeech) disabledVoiceModels.push(id);
+    const isEnabled = enabled && !isTextToSpeech;
     const tokenLimit = Number.parseInt(get('tokenLimit').value || '0', 10);
     if (!Number.isInteger(tokenLimit) || tokenLimit < 0 || tokenLimit > 10_000_000) throw new Error(`Límite de tokens no válido para ${id}.`);
     return {
@@ -1065,7 +1099,7 @@ function readModelSettings() {
       audio: get('audio').checked,
       imageUrl: safeHttpsUrl(get('imageUrl').value.trim()),
       description: get('description').value.trim().slice(0, 180),
-      enabled: get('enabled').checked,
+      enabled: isEnabled,
     };
   });
   const ids = new Set();
@@ -1073,10 +1107,11 @@ function readModelSettings() {
     if (ids.has(model.id)) throw new Error(`El ID ${model.id} está repetido. Cada modelo necesita un ID único.`);
     ids.add(model.id);
   }
-  return models;
+  return { models, disabledVoiceModels };
 }
 
 function renderPlanSettings() {
+  currentSettings.comparisonRows = readPlanComparisonDrafts();
   const container = $('#adminPlansConfig');
   container.replaceChildren();
   for (const plan of currentSettings.plans) {
@@ -1181,7 +1216,7 @@ function renderPlanSettings() {
     featureLegend.textContent = 'Funciones incluidas';
     featureOptions.append(featureLegend);
     const enabledFeatures = Array.isArray(plan.features) ? plan.features : CORE_PLAN_FEATURES;
-    for (const feature of PLAN_FEATURE_OPTIONS) {
+    for (const feature of currentSettings.planFeatures || PLAN_FEATURE_OPTIONS) {
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -1224,6 +1259,162 @@ function renderPlanSettings() {
     container.append(row);
     updatePreview();
   }
+  renderPlanFeatureCatalog();
+  renderPlanComparisonSettings();
+}
+
+function renderPlanFeatureCatalog() {
+  const container = $('#adminPlanFeatureCatalog');
+  if (!container) return;
+  container.replaceChildren();
+  for (const feature of currentSettings.planFeatures || PLAN_FEATURE_OPTIONS) {
+    const item = document.createElement('div');
+    item.className = 'admin-plan-feature-item';
+    const label = document.createElement('span');
+    label.textContent = feature.label;
+    item.append(label);
+    if (!PLAN_FEATURE_OPTIONS.some(base => base.id === feature.id)) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'admin-item-remove';
+      remove.setAttribute('aria-label', `Eliminar función ${feature.label}`);
+      remove.title = 'Eliminar función personalizada';
+      remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg>';
+      remove.addEventListener('click', () => {
+        try {
+          currentSettings.plans = readPlanSettings();
+        } catch (error) {
+          toast(error.message || 'Revisa los datos de los planes antes de quitar esta función.');
+          return;
+        }
+        currentSettings.planFeatures = currentSettings.planFeatures.filter(item => item.id !== feature.id);
+        currentSettings.plans = currentSettings.plans.map(plan => ({
+          ...plan,
+          features: plan.features.filter(id => id !== feature.id),
+        }));
+        renderPlanSettings();
+      });
+      item.append(remove);
+    } else {
+      const base = document.createElement('small');
+      base.textContent = 'Base';
+      item.append(base);
+    }
+    container.append(item);
+  }
+}
+
+function addPlanFeature(labelValue) {
+  const label = labelValue.trim().slice(0, 64);
+  if (!label) return toast('Escribe el nombre de la función.');
+  if ((currentSettings.planFeatures || []).length >= 30) return toast('Puedes configurar hasta 30 funciones.');
+  if ((currentSettings.planFeatures || []).some(feature => feature.label.toLocaleLowerCase() === label.toLocaleLowerCase())) {
+    return toast('Esa función ya está en el catálogo.');
+  }
+  try {
+    currentSettings.plans = readPlanSettings();
+  } catch (error) {
+    return toast(error.message || 'Revisa los datos de los planes antes de agregar una función.');
+  }
+  const slug = label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 42);
+  const stem = `custom-${slug || 'funcion'}`;
+  let id = stem;
+  let suffix = 2;
+  while (currentSettings.planFeatures.some(feature => feature.id === id)) id = `${stem.slice(0, 44)}-${suffix++}`;
+  currentSettings.planFeatures.push({id, label});
+  currentSettings.plans = currentSettings.plans.map(plan => ({...plan, features: [...plan.features]}));
+  $('#newPlanFeatureLabel').value = '';
+  renderPlanSettings();
+}
+
+function readPlanComparisonDrafts() {
+  const rows = [...document.querySelectorAll('.admin-plan-comparison-row')];
+  if (!rows.length) return currentSettings.comparisonRows || [];
+  const planIds = new Set(currentSettings.plans.map(plan => plan.id));
+  return rows.map(row => {
+    const values = {};
+    for (const input of row.querySelectorAll('[data-comparison-plan]')) {
+      const planId = input.dataset.comparisonPlan;
+      if (planIds.has(planId)) values[planId] = input.value.slice(0, 160);
+    }
+    return {
+      id: row.dataset.comparisonId,
+      label: row.querySelector('[data-comparison-label]').value.slice(0, 60),
+      values,
+    };
+  });
+}
+
+function renderPlanComparisonSettings() {
+  const container = $('#adminPlanComparisonConfig');
+  if (!container) return;
+  container.replaceChildren();
+  for (const comparisonRow of currentSettings.comparisonRows || []) {
+    const row = document.createElement('article');
+    row.className = 'admin-plan-comparison-row';
+    row.dataset.comparisonId = comparisonRow.id;
+    const heading = document.createElement('div');
+    heading.className = 'admin-plan-comparison-heading';
+    const title = document.createElement('strong');
+    title.textContent = comparisonRow.label;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'admin-item-remove';
+    remove.setAttribute('aria-label', `Eliminar fila ${comparisonRow.label}`);
+    remove.title = 'Eliminar fila comparativa';
+    remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg>';
+    remove.addEventListener('click', () => row.remove());
+    heading.append(title, remove);
+
+    const label = document.createElement('label');
+    label.className = 'admin-plan-comparison-label';
+    label.textContent = 'Nombre de la característica';
+    const labelInput = document.createElement('input');
+    labelInput.className = 'profile-name-input';
+    labelInput.maxLength = 60;
+    labelInput.dataset.comparisonLabel = '';
+    labelInput.value = comparisonRow.label;
+    labelInput.addEventListener('input', () => { title.textContent = labelInput.value || 'Nueva característica'; });
+    label.append(labelInput);
+
+    const values = document.createElement('div');
+    values.className = 'admin-plan-comparison-values';
+    for (const plan of currentSettings.plans) {
+      const valueLabel = document.createElement('label');
+      valueLabel.textContent = plan.name;
+      const valueInput = document.createElement('input');
+      valueInput.className = 'profile-name-input';
+      valueInput.maxLength = 160;
+      valueInput.placeholder = '—';
+      valueInput.dataset.comparisonPlan = plan.id;
+      valueInput.value = comparisonRow.values?.[plan.id] || '';
+      valueLabel.append(valueInput);
+      values.append(valueLabel);
+    }
+    row.append(heading, label, values);
+    container.append(row);
+  }
+}
+
+function readPlanComparisonSettings(plans) {
+  const planIds = new Set(plans.map(plan => plan.id));
+  const rows = [...document.querySelectorAll('.admin-plan-comparison-row')].map(row => {
+    const label = row.querySelector('[data-comparison-label]').value.trim().slice(0, 60);
+    if (!label) throw new Error('Cada fila de la comparativa necesita un nombre.');
+    const values = {};
+    for (const input of row.querySelectorAll('[data-comparison-plan]')) {
+      const planId = input.dataset.comparisonPlan;
+      if (planIds.has(planId)) values[planId] = input.value.trim().slice(0, 160);
+    }
+    return {id: row.dataset.comparisonId, label, values};
+  });
+  const labels = new Set();
+  for (const row of rows) {
+    const normalized = row.label.toLocaleLowerCase();
+    if (labels.has(normalized)) throw new Error(`La fila “${row.label}” está repetida.`);
+    labels.add(normalized);
+  }
+  return rows;
 }
 
 function readPlanSettings() {
@@ -1236,7 +1427,7 @@ function readPlanSettings() {
     const discountPercent = Number.parseInt(get('discountPercent').value || '0', 10);
     const backgroundColor = get('backgroundColor').value.trim();
     const enabled = get('enabled').checked;
-    if (!Number.isFinite(price) || price < 0 || (enabled && row.dataset.planId !== 'free' && price <= 0) || !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650) {
+    if (!Number.isFinite(price) || price < 0 || (enabled && !['free', 'custom-plan'].includes(row.dataset.planId) && price <= 0) || !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650) {
       throw new Error(`Revisa el precio y duración del plan ${base.name}.`);
     }
     if (!Number.isInteger(monthlyTokens) || monthlyTokens < 0 || monthlyTokens > 100_000_000 || (enabled && monthlyTokens === 0)) {
@@ -1277,6 +1468,7 @@ function renderPlanCards() {
   for (const plan of currentSettings.plans.filter(item => item.enabled !== false)) {
     const card = document.createElement('article');
     card.className = `panel plan${plan.featured ? ' featured' : ''}`;
+    if (plan.id === 'custom-plan') card.classList.add('is-custom-plan');
     card.dataset.planCard = plan.id;
     const acquired = document.createElement('span');
     acquired.className = 'plan-acquired-state'; acquired.hidden = true; acquired.textContent = 'Adquirido';
@@ -1288,7 +1480,12 @@ function renderPlanCards() {
     const description = document.createElement('p'); description.textContent = plan.description || '';
     const price = document.createElement('div'); price.className = 'price';
     const discountPercent = Math.max(0, Math.min(90, Number(plan.discountPercent) || 0));
-    if (discountPercent && Number(plan.price) > 0) {
+    if (plan.id === 'custom-plan') {
+      const priceText = document.createElement('span');
+      priceText.className = 'plan-custom-price';
+      priceText.textContent = 'A cotizar';
+      price.append(priceText);
+    } else if (discountPercent && Number(plan.price) > 0) {
       const oldPrice = document.createElement('del');
       oldPrice.className = 'plan-price-old';
       oldPrice.textContent = formatPlanPrice(plan, Number(plan.price));
@@ -1297,7 +1494,7 @@ function renderPlanCards() {
       newPrice.textContent = formatPlanPrice(plan);
       const discountTag = document.createElement('span');
       discountTag.className = 'plan-discount-tag';
-      discountTag.textContent = `-${discountPercent}%`;
+      discountTag.textContent = `Ahorras ${discountPercent}%`;
       price.append(oldPrice, newPrice, discountTag);
       card.classList.add('has-plan-discount');
     } else {
@@ -1305,7 +1502,7 @@ function renderPlanCards() {
       priceText.textContent = plan.price ? formatPlanPrice(plan, Number(plan.price)) : 'A definir';
       price.append(priceText);
     }
-    const period = document.createElement('small'); period.textContent = `/ ${plan.periodLabel || `${plan.durationDays} días`}`;
+    const period = document.createElement('small'); period.textContent = plan.id === 'custom-plan' ? '/ según tu selección' : `/ ${plan.periodLabel || `${plan.durationDays} días`}`;
     price.append(period);
     const benefits = document.createElement('ul');
     for (const benefit of plan.benefits || []) {
@@ -1321,10 +1518,10 @@ function renderPlanCards() {
       button.dataset.buyPlan = plan.id;
       button.dataset.planName = plan.name;
       button.dataset.durationDays = String(plan.durationDays);
-      button.dataset.amount = `${effectivePlanPrice(plan)} ${plan.currency}`;
+      button.dataset.amount = plan.id === 'custom-plan' ? 'A cotizar' : `${effectivePlanPrice(plan)} ${plan.currency}`;
       button.dataset.currency = plan.currency || 'USD';
-      button.disabled = !plan.price || Number(plan.price) <= 0;
-      button.textContent = button.disabled ? 'Precio pendiente' : 'Enviar comprobante';
+      button.disabled = plan.id === 'custom-plan' ? false : !plan.price || Number(plan.price) <= 0;
+      button.textContent = plan.id === 'custom-plan' ? 'Diseñar mi plan' : button.disabled ? 'Precio pendiente' : 'Enviar comprobante';
       card.append(button);
     }
     const bgColor = /^#[0-9a-f]{6}$/i.test(plan.backgroundColor || '') ? plan.backgroundColor : '';
@@ -1376,11 +1573,12 @@ function renderPlanComparison() {
   head.append(headRow);
   const body = document.createElement('tbody');
   const comparisonRows = [
-    ['Precio', plan => plan.price ? `${plan.currency} ${plan.price} / ${plan.periodLabel || `${plan.durationDays} días`}` : 'A definir'],
-    ['Duración', plan => plan.id === 'free' ? 'Sin vencimiento' : `${plan.durationDays} días`],
-    ['Tokens por ciclo', plan => Number(plan.monthlyTokens || 0).toLocaleString('es-AR')],
+    ['Precio', plan => plan.id === 'custom-plan' ? 'A cotizar' : plan.price ? `${plan.currency} ${plan.price} / ${plan.periodLabel || `${plan.durationDays} días`}` : 'A definir'],
+    ['Duración', plan => plan.id === 'free' ? 'Sin vencimiento' : plan.id === 'custom-plan' ? 'A medida' : `${plan.durationDays} días`],
+    ['Tokens por ciclo', plan => plan.id === 'custom-plan' ? 'A definir' : Number(plan.monthlyTokens || 0).toLocaleString('es-AR')],
     ['Beneficios', plan => (plan.benefits || []).join(' · ') || '—'],
-    ...PLAN_FEATURE_OPTIONS.map(feature => [feature.label, plan => plan.features?.includes(feature.id) ? 'Incluido' : '—']),
+    ...(currentSettings.planFeatures || PLAN_FEATURE_OPTIONS).map(feature => [feature.label, plan => plan.features?.includes(feature.id) ? 'Incluido' : '—']),
+    ...(currentSettings.comparisonRows || []).map(row => [row.label, plan => row.values?.[plan.id] || '—']),
   ];
   for (const [label, getValue] of comparisonRows) {
     const row = document.createElement('tr');
@@ -1399,6 +1597,7 @@ function renderPlanComparison() {
 }
 
 function methodName(id) {
+  if (id === 'custom-request') return 'Solicitud personalizada';
   return currentSettings.paymentMethods[id]?.name || METHOD_NAMES[id] || id;
 }
 
@@ -1781,7 +1980,7 @@ async function saveSettings(patch) {
   renderPlanCards();
   renderTokenPackages();
   applyWebCustomization();
-  window.dispatchEvent(new CustomEvent('model-config-updated', { detail: { models: currentSettings.models, plans: currentSettings.plans } }));
+  window.dispatchEvent(new CustomEvent('model-config-updated', { detail: { models: currentSettings.models, plans: currentSettings.plans, planFeatures: currentSettings.planFeatures } }));
 }
 
 function renderPaymentMethodDetails() {
@@ -1825,16 +2024,22 @@ function openPurchase(button) {
   if (!activeUser) return toast('Inicia sesión para enviar un comprobante.');
   const plan = currentSettings.plans.find(item => item.id === button.dataset.buyPlan);
   if (!plan) return toast('No se encontró la configuración del plan.');
+  const isCustomRequest = plan.id === 'custom-plan';
   currentPurchase = {
-    type: 'plan',
+    type: isCustomRequest ? 'custom' : 'plan',
     planId: plan.id,
     planName: plan.name,
     durationDays: Number(plan.durationDays),
     monthlyTokens: Number(plan.monthlyTokens || 0),
-    amount: `${plan.price} ${plan.currency}`,
+    amount: isCustomRequest ? 'A cotizar' : `${plan.price} ${plan.currency}`,
     currency: plan.currency || 'USD',
   };
-  openPurchaseDialog(`Comprobante · ${currentPurchase.planName}`, `${currentPurchase.amount} · acceso por ${currentPurchase.durationDays} días`);
+  openPurchaseDialog(
+    isCustomRequest ? 'Solicitar plan Personalizado' : `Comprobante · ${currentPurchase.planName}`,
+    isCustomRequest
+      ? 'Elige lo que necesitas. El administrador revisará tu propuesta y te confirmará el precio.'
+      : `${currentPurchase.amount} · acceso por ${currentPurchase.durationDays} días`,
+  );
 }
 
 function openTokenPurchase(tokenPackage) {
@@ -1856,9 +2061,20 @@ function openTokenPurchase(tokenPackage) {
 }
 
 function openPurchaseDialog(title, summary) {
-  $('#paymentKicker').textContent = currentPurchase.type === 'tokens' ? 'Compra de tokens' : 'Solicitud de acceso';
+  const isCustomRequest = currentPurchase.type === 'custom';
+  const needsCustomTag = ['premium', 'custom-plan'].includes(currentPurchase.planId);
+  $('#paymentKicker').textContent = isCustomRequest ? 'Solicitud a medida' : currentPurchase.type === 'tokens' ? 'Compra de tokens' : 'Solicitud de acceso';
   $('#paymentTitle').textContent = title;
   $('#paymentPlanSummary').textContent = summary;
+  $('#paymentCustomTagField').hidden = !needsCustomTag;
+  $('#paymentCustomTag').value = '';
+  $('#customPlanBuilder').hidden = !isCustomRequest;
+  $('#paymentMethodFields').hidden = isCustomRequest;
+  $('#paymentMethod').required = !isCustomRequest;
+  $('#paymentPayerFields').hidden = isCustomRequest;
+  $('#paymentPayerFields').querySelectorAll('input').forEach(input => { input.required = !isCustomRequest && input.id !== 'payerAlias'; });
+  $('#paymentReceiptFields').hidden = isCustomRequest;
+  $('#submitPayment').textContent = isCustomRequest ? 'Enviar solicitud' : 'Enviar comprobante';
   $('#buyerEmail').value = activeUser.email || '';
   $('#buyerName').value = userProfile.displayName || activeUser.displayName || '';
   $('#payerName').value = '';
@@ -1868,6 +2084,11 @@ function openPurchaseDialog(title, summary) {
   $('#receiptFile').value = '';
   $('#receiptUrl').value = '';
   $('#paymentFeedback').textContent = '';
+  if (isCustomRequest) {
+    $('#customPlanDuration').value = String(currentPurchase.durationDays || 30);
+    $('#customPlanTokens').value = String(currentPurchase.monthlyTokens || 500000);
+    renderCustomPlanBuilder();
+  }
   const modelOptions = $('#paymentModelOptions');
   modelOptions.replaceChildren();
   const needsModels = currentPurchase.type === 'plan' && ['rental', 'model-pack'].includes(currentPurchase.planId);
@@ -1890,6 +2111,40 @@ function openPurchaseDialog(title, summary) {
   }
   refreshPaymentMethodOptions();
   $('#paymentDialog').showModal();
+}
+
+function renderCustomPlanBuilder() {
+  const benefits = $('#customPlanBenefitOptions');
+  const features = $('#customPlanFeatureOptions');
+  const models = $('#customPlanModelOptions');
+  benefits.replaceChildren();
+  features.replaceChildren();
+  models.replaceChildren();
+
+  const addChoice = (container, name, value, labelText) => {
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.name = name;
+    checkbox.value = value;
+    checkbox.dataset.choiceLabel = labelText;
+    const text = document.createElement('span');
+    text.textContent = labelText;
+    label.append(checkbox, text);
+    container.append(label);
+  };
+
+  for (const plan of currentSettings.plans.filter(item => item.enabled !== false && item.id !== 'custom-plan')) {
+    for (const [index, benefit] of (plan.benefits || []).entries()) {
+      addChoice(benefits, 'customSelections', `${plan.id}:${index}`, `${plan.name}: ${benefit}`.slice(0, 180));
+    }
+  }
+  for (const feature of currentSettings.planFeatures || PLAN_FEATURE_OPTIONS) {
+    addChoice(features, 'customPlanFeatures', feature.id, feature.label);
+  }
+  for (const modelId of paidModelIds()) {
+    addChoice(models, 'customPlanModels', modelId, modelId);
+  }
 }
 
 function compressReceipt(file) {
@@ -1942,66 +2197,92 @@ $('#paymentForm').addEventListener('submit', async event => {
   const submit = $('#submitPayment');
   const file = $('#receiptFile').files[0];
   const urlValue = $('#receiptUrl').value.trim();
-  const paymentMethod = $('#paymentMethod').value;
+  const isCustomRequest = currentPurchase?.type === 'custom';
+  const paymentMethod = isCustomRequest ? 'custom-request' : $('#paymentMethod').value;
   if (!currentPurchase) return;
-  if (!currentSettings.paymentMethods[paymentMethod]?.enabled) {
+  if (!isCustomRequest && !currentSettings.paymentMethods[paymentMethod]?.enabled) {
     feedback.textContent = 'No hay un método de pago disponible. Revisa los planes más tarde.';
     return;
   }
-  if (Boolean(file) === Boolean(urlValue)) {
+  if (!isCustomRequest && Boolean(file) === Boolean(urlValue)) {
     feedback.textContent = 'Adjunta una imagen o proporciona su enlace, no ambos.';
     return;
   }
-  const receiptUrl = urlValue ? safeHttpsUrl(urlValue) : '';
+  const receiptUrl = !isCustomRequest && urlValue ? safeHttpsUrl(urlValue) : '';
   if (urlValue && !receiptUrl) {
     feedback.textContent = 'El enlace del comprobante debe comenzar con https://.';
     return;
   }
   const models = currentPurchase.type === 'tokens'
     ? []
-    : [...document.querySelectorAll('input[name="paymentModels"]:checked')].map(input => input.value);
+    : [...document.querySelectorAll(`input[name="${isCustomRequest ? 'customPlanModels' : 'paymentModels'}"]:checked`)].map(input => input.value);
   if (currentPurchase.type === 'plan' && ['rental', 'model-pack'].includes(currentPurchase.planId) && !models.length) {
     feedback.textContent = 'Selecciona al menos un modelo para el alquiler.';
+    return;
+  }
+  const customFeatures = isCustomRequest
+    ? [...document.querySelectorAll('input[name="customPlanFeatures"]:checked')].map(input => input.value)
+    : [];
+  const customSelections = isCustomRequest
+    ? [...document.querySelectorAll('input[name="customSelections"]:checked')].map(input => input.dataset.choiceLabel)
+    : [];
+  const durationDays = isCustomRequest ? Number($('#customPlanDuration').value) : currentPurchase.durationDays;
+  const planTokenLimit = isCustomRequest ? Number($('#customPlanTokens').value) : currentPurchase.monthlyTokens;
+  if (isCustomRequest && (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650
+      || !Number.isInteger(planTokenLimit) || planTokenLimit < 0 || planTokenLimit > 100_000_000)) {
+    feedback.textContent = 'Revisa la duración y la cantidad de tokens de tu propuesta.';
+    return;
+  }
+  if (isCustomRequest && !customFeatures.length && !customSelections.length && !models.length) {
+    feedback.textContent = 'Selecciona al menos una función, beneficio o modelo.';
+    return;
+  }
+  if (customSelections.length > 60 || customFeatures.length > 30 || models.length > 30) {
+    feedback.textContent = 'La propuesta supera el máximo de elementos por categoría.';
     return;
   }
   submit.disabled = true;
   submit.textContent = 'Enviando…';
   feedback.textContent = '';
   try {
-    const receiptData = file ? await compressReceipt(file) : '';
+    const receiptData = !isCustomRequest && file ? await compressReceipt(file) : '';
     const payload = {
       uid: activeUser.uid,
       email: activeUser.email || '',
       buyerName: $('#buyerName').value.trim(),
-      payerName: $('#payerName').value.trim(),
-      accountName: $('#recipientAccountName').value.trim(),
-      accountAlias: $('#payerAlias').value.trim(),
-      phone: $('#payerPhone').value.trim(),
+      payerName: isCustomRequest ? '' : $('#payerName').value.trim(),
+      accountName: isCustomRequest ? '' : $('#recipientAccountName').value.trim(),
+      accountAlias: isCustomRequest ? '' : $('#payerAlias').value.trim(),
+      phone: isCustomRequest ? '' : $('#payerPhone').value.trim(),
       purchaseType: currentPurchase.type,
       planId: currentPurchase.planId,
       planName: currentPurchase.planName,
-      durationDays: currentPurchase.durationDays,
+      durationDays,
       models,
       ...(currentPurchase.type === 'tokens'
         ? {tokenPackageId: currentPurchase.packageId, tokenAmount: currentPurchase.tokenAmount}
-        : {planTokenLimit: currentPurchase.monthlyTokens}),
+        : {planTokenLimit}),
+      ...(isCustomRequest ? {customFeatures, customSelections} : {}),
+      ...($('#paymentCustomTag').value.trim() ? {customTag: $('#paymentCustomTag').value.trim().slice(0, 32)} : {}),
       amount: currentPurchase.amount,
       currency: currentPurchase.currency,
       paymentMethod,
       status: 'pending',
       createdAt: serverTimestamp(),
-      ...(receiptData ? { receiptData } : { receiptUrl }),
+      ...(receiptData ? {receiptData} : receiptUrl ? {receiptUrl} : {}),
     };
     await addDoc(collection(db, 'paymentSubmissions'), payload);
     $('#paymentDialog').close();
-    toast(currentPurchase.type === 'tokens'
+    toast(isCustomRequest
+      ? 'Solicitud enviada al administrador para revisión.'
+      : currentPurchase.type === 'tokens'
       ? 'Comprobante enviado. Los tokens se acreditarán al aprobar el pago.'
       : 'Comprobante enviado. El acceso se activará al aprobar el pago.');
   } catch (error) {
     feedback.textContent = error.message || 'No se pudo enviar el comprobante. Revisa la conexión y las reglas de Firestore.';
   } finally {
     submit.disabled = false;
-    submit.textContent = 'Enviar comprobante';
+    submit.textContent = isCustomRequest ? 'Enviar solicitud' : 'Enviar comprobante';
   }
 });
 
@@ -2027,7 +2308,7 @@ function renderPaymentQueue() {
     const title = document.createElement('strong');
     title.textContent = payment.buyerName || payment.email || 'Comprador';
     const description = document.createElement('span');
-    description.textContent = `${payment.planName || 'Plan'} · ${methodName(payment.paymentMethod)}`;
+    description.textContent = `${payment.planName || 'Plan'} · ${payment.purchaseType === 'custom' ? 'Solicitud a medida' : methodName(payment.paymentMethod)}`;
     const amount = document.createElement('small');
     amount.textContent = payment.amount || '';
     button.append(title, description, amount);
@@ -2058,13 +2339,22 @@ function renderPaymentDetail(payment) {
   const metadata = document.createElement('dl');
   metadata.className = 'payment-metadata';
   const isTokenPurchase = payment.purchaseType === 'tokens';
+  const isCustomRequest = payment.purchaseType === 'custom';
+  const planFeatureLabels = new Map((currentSettings.planFeatures || PLAN_FEATURE_OPTIONS).map(feature => [feature.id, feature.label]));
   for (const [label, value] of [
     ['Comprador', payment.buyerName], ['Correo', payment.email], ['Pagó', payment.payerName],
     ['Cuenta', payment.accountName], ['Alias', payment.accountAlias || 'No indicado'], ['Teléfono', payment.phone],
     ['Método', methodName(payment.paymentMethod)],
-    ['Compra', isTokenPurchase ? 'Recarga de tokens' : 'Plan'],
+    ['Compra', isCustomRequest ? 'Solicitud personalizada' : isTokenPurchase ? 'Recarga de tokens' : 'Plan'],
     ['Paquete', isTokenPurchase ? `${Number(payment.tokenAmount || 0).toLocaleString('es-AR')} tokens` : payment.planName],
     ['Modelos', isTokenPurchase ? 'No aplica' : (payment.models || []).join(', ') || 'Incluidos en el plan'],
+    ...(isCustomRequest ? [
+      ['Etiqueta solicitada', payment.customTag || 'Sin etiqueta'],
+      ['Funciones', (payment.customFeatures || []).map(id => planFeatureLabels.get(id) || id).join(', ') || 'Ninguna seleccionada'],
+      ['Beneficios', (payment.customSelections || []).join(' · ') || 'Ninguno seleccionado'],
+      ['Duración deseada', `${payment.durationDays} días`],
+      ['Tokens por ciclo deseados', Number(payment.planTokenLimit || 0).toLocaleString('es-AR')],
+    ] : payment.customTag ? [['Etiqueta personalizada', payment.customTag]] : []),
   ]) {
     const row = document.createElement('div');
     const term = document.createElement('dt'); term.textContent = label;
@@ -2080,15 +2370,15 @@ function renderPaymentDetail(payment) {
     image.alt = 'Comprobante enviado';
     receipt.append(image);
   } else {
-    const noImage = document.createElement('span'); noImage.textContent = 'No hay imagen disponible.'; receipt.append(noImage);
+    const noImage = document.createElement('span'); noImage.textContent = isCustomRequest ? 'Solicitud enviada sin pago adjunto; requiere cotización y revisión.' : 'No hay imagen disponible.'; receipt.append(noImage);
   }
   const actions = document.createElement('div');
   actions.className = 'admin-payment-actions';
   const reject = document.createElement('button');
-  reject.type = 'button'; reject.className = 'btn'; reject.textContent = 'Rechazar';
+  reject.type = 'button'; reject.className = 'btn'; reject.textContent = isCustomRequest ? 'Rechazar solicitud' : 'Rechazar';
   reject.addEventListener('click', () => reviewPayment(payment, false));
   const approve = document.createElement('button');
-  approve.type = 'button'; approve.className = 'btn primary'; approve.textContent = 'Aprobar pago';
+  approve.type = 'button'; approve.className = 'btn primary'; approve.textContent = isCustomRequest ? 'Marcar revisada' : 'Aprobar pago';
   approve.addEventListener('click', () => reviewPayment(payment, true));
   actions.append(reject, approve);
   detail.append(heading, metadata, receipt, actions);
@@ -2096,16 +2386,17 @@ function renderPaymentDetail(payment) {
 
 async function reviewPayment(payment, approved) {
   if (!ADMIN_EMAILS.has((activeUser?.email || '').toLowerCase())) return;
+  const isCustomRequest = payment.purchaseType === 'custom';
   const batch = writeBatch(db);
   const paymentRef = doc(db, 'paymentSubmissions', payment.id);
   const notificationRef = doc(collection(db, 'users', payment.uid, 'notifications'));
   batch.update(paymentRef, {
-    status: approved ? 'approved' : 'rejected',
+    status: approved ? isCustomRequest ? 'reviewed' : 'approved' : 'rejected',
     reviewedAt: serverTimestamp(),
     reviewedBy: activeUser.email || '',
   });
   const isTokenPurchase = payment.purchaseType === 'tokens';
-  if (approved) {
+  if (approved && !isCustomRequest) {
     const profileRef = doc(db, 'users', payment.uid);
     let profileSnapshot;
     try {
@@ -2164,13 +2455,16 @@ async function reviewPayment(payment, approved) {
         planTokenLimit: Number(plan.monthlyTokens || 0),
         premiumModels: models,
         expiresAt,
+        ...(plan.id === 'premium' && payment.customTag ? {customTag: String(payment.customTag).slice(0, 32)} : {}),
       }, { merge: true });
     }
   }
   batch.set(notificationRef, {
-    title: approved ? (isTokenPurchase ? 'Tokens acreditados' : 'Pago aprobado') : 'Pago revisado',
+    title: approved ? isCustomRequest ? 'Solicitud personalizada revisada' : isTokenPurchase ? 'Tokens acreditados' : 'Pago aprobado' : 'Pago revisado',
     message: approved
-      ? isTokenPurchase
+      ? isCustomRequest
+        ? 'Tu propuesta fue revisada. El acceso se activará cuando el administrador configure las opciones acordadas.'
+        : isTokenPurchase
         ? `Se acreditaron ${Number(payment.tokenAmount).toLocaleString('es-AR')} tokens en tu cuenta.`
         : `Tu pago para ${payment.planName} fue aprobado. Ya tienes acceso a las funciones incluidas.`
       : `Tu comprobante para ${payment.planName} no fue aprobado. Revisa los datos y vuelve a enviarlo.`,
@@ -2183,7 +2477,9 @@ async function reviewPayment(payment, approved) {
     await batch.commit();
     selectedPayment = null;
     await loadAdminPayments();
-    toast(approved ? (isTokenPurchase ? 'Tokens acreditados.' : 'Pago aprobado y acceso activado.') : 'Comprobante rechazado.');
+    toast(approved
+      ? isCustomRequest ? 'Solicitud marcada como revisada; no se activó acceso automáticamente.' : isTokenPurchase ? 'Tokens acreditados.' : 'Pago aprobado y acceso activado.'
+      : isCustomRequest ? 'Solicitud rechazada.' : 'Comprobante rechazado.');
   } catch (error) {
     console.error('No se pudo revisar el pago:', error);
     toast('No se pudo guardar la revisión. Comprueba las reglas publicadas.');
@@ -2201,6 +2497,154 @@ async function loadAdminPayments() {
   } catch (error) {
     $('#adminPaymentQueue').textContent = 'No se pudieron cargar los comprobantes.';
     console.error('No se pudo cargar la cola de pagos:', error);
+  }
+}
+
+async function loadAdminFeedback() {
+  if (!ADMIN_EMAILS.has((activeUser?.email || '').toLowerCase())) return;
+  const queue = $('#adminFeedbackQueue');
+  queue.textContent = 'Cargando feedback…';
+  try {
+    const snapshot = await getDocs(query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(100)));
+    adminFeedbackItems = snapshot.docs.map(item => ({id: item.id, ...item.data()}));
+    if (!selectedFeedback || !adminFeedbackItems.some(item => item.id === selectedFeedback.id)) {
+      selectedFeedback = adminFeedbackItems[0] || null;
+    } else {
+      selectedFeedback = adminFeedbackItems.find(item => item.id === selectedFeedback.id);
+    }
+    renderAdminFeedbackQueue();
+  } catch (error) {
+    console.error('No se pudo cargar el feedback:', error);
+    queue.textContent = error.code === 'permission-denied'
+      ? 'Firestore no permite leer el feedback. Publica las reglas actualizadas.'
+      : 'No se pudo cargar el feedback.';
+  }
+}
+
+function renderAdminFeedbackQueue() {
+  const queue = $('#adminFeedbackQueue');
+  queue.replaceChildren();
+  const pendingCount = adminFeedbackItems.filter(item => item.status === 'pending').length;
+  $('#adminFeedbackCount').textContent = `${adminFeedbackItems.length} mensajes · ${pendingCount} pendientes`;
+  $('#adminFeedbackTabCount').textContent = String(pendingCount);
+  if (!adminFeedbackItems.length) {
+    const empty = document.createElement('div');
+    empty.className = 'admin-user-empty';
+    empty.textContent = 'Todavía no hay propuestas recibidas.';
+    queue.append(empty);
+    $('#adminFeedbackDetail').innerHTML = '<span class="admin-user-empty">Cuando alguien envíe feedback, aparecerá acá.</span>';
+    return;
+  }
+  for (const item of adminFeedbackItems) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `admin-payment-item${selectedFeedback?.id === item.id ? ' active' : ''}`;
+    const title = document.createElement('strong');
+    title.textContent = item.title || 'Propuesta sin título';
+    const description = document.createElement('span');
+    description.textContent = `${item.displayName || item.email || 'Usuario'} · ${item.area || 'general'}`;
+    const status = document.createElement('small');
+    status.textContent = ({pending: 'Pendiente', accepted: 'Aceptada', rejected: 'Rechazada'})[item.status] || 'Pendiente';
+    button.append(title, description, status);
+    button.addEventListener('click', () => {
+      selectedFeedback = item;
+      renderAdminFeedbackQueue();
+      renderAdminFeedbackDetail(item);
+    });
+    queue.append(button);
+  }
+  renderAdminFeedbackDetail(selectedFeedback);
+}
+
+function renderAdminFeedbackDetail(item) {
+  const detail = $('#adminFeedbackDetail');
+  detail.replaceChildren();
+  if (!item) {
+    const empty = document.createElement('span');
+    empty.className = 'admin-user-empty';
+    empty.textContent = 'Selecciona un mensaje para responderlo.';
+    detail.append(empty);
+    return;
+  }
+  const header = document.createElement('div');
+  header.className = 'admin-payment-detail-head';
+  const title = document.createElement('h4');
+  title.textContent = item.title || 'Propuesta';
+  const status = document.createElement('span');
+  status.className = `feedback-status is-${item.status || 'pending'}`;
+  status.textContent = ({pending: 'Pendiente', accepted: 'Aceptada', rejected: 'Rechazada'})[item.status] || 'Pendiente';
+  header.append(title, status);
+  const metadata = document.createElement('dl');
+  metadata.className = 'payment-metadata';
+  const createdAt = item.createdAt?.toDate?.();
+  for (const [label, value] of [
+    ['Usuario', item.displayName], ['Correo', item.email], ['Tipo', item.type], ['Área', item.area],
+    ['Valoración', item.rating ? `${item.rating} / 5` : 'Sin valoración'],
+    ['Recibido', createdAt ? createdAt.toLocaleString('es-AR') : 'Fecha pendiente'],
+  ]) {
+    const row = document.createElement('div');
+    const term = document.createElement('dt'); term.textContent = label;
+    const valueNode = document.createElement('dd'); valueNode.textContent = value || '—';
+    row.append(term, valueNode);
+    metadata.append(row);
+  }
+  const message = document.createElement('p');
+  message.className = 'admin-feedback-message';
+  message.textContent = item.details || '';
+  detail.append(header, metadata, message);
+
+  const responseLabel = document.createElement('label');
+  responseLabel.className = 'admin-feedback-response-label';
+  responseLabel.textContent = 'Respuesta para la persona';
+  const responseInput = document.createElement('textarea');
+  responseInput.className = 'profile-name-input';
+  responseInput.rows = 4;
+  responseInput.maxLength = 1200;
+  responseInput.placeholder = 'Escribe una respuesta personalizada…';
+  responseInput.value = item.response || '';
+  responseInput.disabled = item.status !== 'pending';
+  responseLabel.append(responseInput);
+  detail.append(responseLabel);
+
+  if (item.status === 'pending') {
+    const actions = document.createElement('div');
+    actions.className = 'admin-payment-actions';
+    const reject = document.createElement('button');
+    reject.type = 'button';
+    reject.className = 'btn';
+    reject.textContent = 'Rechazar';
+    reject.addEventListener('click', () => saveAdminFeedbackReview(item, 'rejected', responseInput.value));
+    const accept = document.createElement('button');
+    accept.type = 'button';
+    accept.className = 'btn primary';
+    accept.textContent = 'Aceptar propuesta';
+    accept.addEventListener('click', () => saveAdminFeedbackReview(item, 'accepted', responseInput.value));
+    actions.append(reject, accept);
+    detail.append(actions);
+  } else if (item.response) {
+    const savedResponse = document.createElement('p');
+    savedResponse.className = 'feedback-response';
+    savedResponse.textContent = `Respuesta enviada: ${item.response}`;
+    detail.append(savedResponse);
+  }
+}
+
+async function saveAdminFeedbackReview(item, status, response) {
+  if (!ADMIN_EMAILS.has((activeUser?.email || '').toLowerCase())) return;
+  const message = response.trim().slice(0, 1200);
+  if (!message) return toast('Escribe una respuesta antes de revisar la propuesta.');
+  try {
+    await updateDoc(doc(db, 'feedback', item.id), {
+      status,
+      response: message,
+      reviewedAt: serverTimestamp(),
+      reviewedBy: activeUser.email || '',
+    });
+    toast(status === 'accepted' ? 'Propuesta aceptada y respuesta enviada.' : 'Propuesta rechazada y respuesta enviada.');
+    await loadAdminFeedback();
+  } catch (error) {
+    console.error('No se pudo guardar la respuesta de feedback:', error);
+    toast(error.code === 'permission-denied' ? 'Firestore no permite revisar feedback. Publica las reglas actualizadas.' : 'No se pudo guardar la respuesta.');
   }
 }
 
@@ -2297,6 +2741,17 @@ document.querySelector('#addPlanConfig').addEventListener('click', () => {
   });
   renderPlanSettings();
 });
+document.querySelector('#addPlanComparisonRow').addEventListener('click', () => {
+  if (currentSettings.comparisonRows.length >= 20) return toast('Puedes agregar hasta 20 filas a la comparativa.');
+  currentSettings.comparisonRows = readPlanComparisonDrafts();
+  const id = globalThis.crypto?.randomUUID?.() || `comparison-${Date.now().toString(36)}`;
+  currentSettings.comparisonRows.push({id, label: 'Nueva característica', values: {}});
+  renderPlanComparisonSettings();
+});
+document.querySelector('#addPlanFeature').addEventListener('click', () => addPlanFeature($('#newPlanFeatureLabel').value));
+document.querySelector('#newPlanFeatureLabel').addEventListener('keydown', event => {
+  if (event.key === 'Enter') { event.preventDefault(); addPlanFeature(event.currentTarget.value); }
+});
 document.querySelector('#addAiModel').addEventListener('click', () => {
   if (currentSettings.models.length >= 30) return toast('Puedes configurar hasta 30 modelos.');
   const modelId = document.querySelector('#newAiModelId').value.trim();
@@ -2344,19 +2799,23 @@ document.querySelector('#saveTokenPackages').addEventListener('click', async () 
 });
 document.querySelector('#savePlanConfig').addEventListener('click', async () => {
   try {
-    await saveSettings({ plans: readPlanSettings() });
+    const plans = readPlanSettings();
+    const comparisonRows = readPlanComparisonSettings(plans);
+    await saveSettings({ plans, planFeatures: currentSettings.planFeatures, comparisonRows });
     renderPlanSettings();
-    toast('Planes guardados.');
+    toast('Planes y comparativa guardados.');
   } catch (error) {
     toast(error.message || 'No se pudieron guardar los planes.');
   }
 });
 document.querySelector('#saveModelConfig').addEventListener('click', async () => {
   try {
-    const models = readModelSettings();
+    const { models, disabledVoiceModels } = readModelSettings();
     await saveSettings({ models });
     renderModelSettings();
-    toast('Catálogo de modelos guardado.');
+    toast(disabledVoiceModels.length
+      ? `Catálogo guardado. Se desactivaron ${disabledVoiceModels.length} modelo${disabledVoiceModels.length === 1 ? '' : 's'} de voz incompatible${disabledVoiceModels.length === 1 ? '' : 's'}.`
+      : 'Catálogo de modelos guardado.');
   } catch (error) {
     toast(error.message || 'No se pudieron guardar los modelos. Revisa las reglas de Firestore.');
   }

@@ -26,6 +26,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       edit: ['Editar foto', 'Edición local', 'Encuentra el tono exacto', 'Ajusta luz y color en tu dispositivo, sin subir tu imagen.'],
       video: ['Editar vídeo', 'Edición local', 'Quédate con lo esencial', 'Selecciona un tramo y expórtalo directamente desde el navegador.'],
       agents: ['Mini agentes', 'Asistentes a tu manera', 'Mini agentes', 'Creá un asistente para una tarea y volvé a usarlo cuando quieras.'],
+      explore: ['Explorar', 'Mapa mundial', 'Explorar el mundo', 'Busca ciudades y lugares en un mapa interactivo.'],
       usage: ['Uso y tokens', 'Tu cuenta', 'Uso y tokens', 'Consumo real registrado en el backend.'],
       chat: ['Chat IA', 'Asistente creativo', '¿Qué tienes en mente?', 'Cuéntame lo que quieres crear o resolver.'],
       plans: ['Planes', 'Crece a tu ritmo', 'Un plan para cada idea', 'Empieza gratis. Pásate a Pro cuando tu proceso lo pida.'],
@@ -93,6 +94,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         else renderDiscordPresence([]);
       }).finally(() => { discordPresenceRequest = null; });
       return discordPresenceRequest;
+
     }
 
     function activePlanId(profile = activeUserProfile) {
@@ -120,7 +122,11 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     }
 
     function planHasFeature(feature) {
-      const plan = configuredPlans.find(item => item.id === activePlanId());
+      const planId = activePlanId();
+      if (planId.startsWith('custom-')) {
+        return Array.isArray(activeUserProfile.customFeatures) && activeUserProfile.customFeatures.includes(feature);
+      }
+      const plan = configuredPlans.find(item => item.id === planId);
       return !Array.isArray(plan?.features) || plan.features.includes(feature);
     }
 
@@ -160,7 +166,6 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       $('#videoPremiumNote').hidden = allowed;
       if (resetSelection) {
         renderEditorPreview();
-        renderVideoPreviewFrame();
       }
     }
 
@@ -196,15 +201,58 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       $$('.nav button').forEach(item => item.classList.toggle('active', item.dataset.view === view));
       $$('.view').forEach(item => item.classList.toggle('active', item.id === `view-${view}`));
       const [crumb, eyebrow, title, description] = copy;
-      $('#pageHead').hidden = ['home', 'agents', 'usage'].includes(view);
+      $('#pageHead').hidden = ['home', 'agents', 'usage', 'explore'].includes(view);
       $('#newProject').hidden = view === 'others';
       $('#crumbTitle').textContent = crumb; $('#eyebrowText').textContent = eyebrow; $('#pageTitle').textContent = title; $('#pageDescription').textContent = description;
       if (view === 'library') loadImageLibrary();
-      if (view === 'others') loadDiscordPresence();
+      if (view === 'others') { loadDiscordPresence(); loadMyFeedback(); }
       window.scrollTo({top: 0, behavior: 'smooth'});
       return true;
     }
     $$('.nav button').forEach(button => button.addEventListener('click', () => setActiveView(button.dataset.view)));
+    const appShell = $('.shell');
+    let sidebarCollapsed = localStorage.getItem('nexus-sidebar-collapsed') === 'true';
+    let mobileNavHidden = localStorage.getItem('nexus-mobile-nav-hidden') === 'true';
+    appShell.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+    appShell.classList.toggle('mobile-nav-hidden', mobileNavHidden);
+
+    function syncSidebarToggleButtons() {
+      const isMobile = window.matchMedia('(max-width: 760px)').matches;
+      const isDesktop = window.matchMedia('(min-width: 1101px)').matches;
+      const expanded = isMobile ? !mobileNavHidden : !sidebarCollapsed;
+      const label = isMobile
+        ? (expanded ? 'Ocultar navegación' : 'Mostrar navegación')
+        : isDesktop
+          ? (expanded ? 'Contraer barra lateral' : 'Expandir barra lateral')
+          : (expanded ? 'Ocultar barra lateral' : 'Mostrar barra lateral');
+      for (const button of [$('#sidebarToggle'), $('#mobileSidebarToggle')]) {
+        button.setAttribute('aria-expanded', String(expanded));
+        button.setAttribute('aria-label', label);
+        button.title = label;
+      }
+    }
+
+    function toggleSidebar() {
+      sidebarCollapsed = !sidebarCollapsed;
+      appShell.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+      localStorage.setItem('nexus-sidebar-collapsed', String(sidebarCollapsed));
+      syncSidebarToggleButtons();
+    }
+
+    $('#sidebarToggle').addEventListener('click', toggleSidebar);
+    $('#mobileSidebarToggle').addEventListener('click', () => {
+      if (window.matchMedia('(max-width: 760px)').matches) {
+        mobileNavHidden = !mobileNavHidden;
+        appShell.classList.toggle('mobile-nav-hidden', mobileNavHidden);
+        localStorage.setItem('nexus-mobile-nav-hidden', String(mobileNavHidden));
+      } else {
+        toggleSidebar();
+        return;
+      }
+      syncSidebarToggleButtons();
+    });
+    window.addEventListener('resize', syncSidebarToggleButtons);
+    syncSidebarToggleButtons();
     $('#shareNexusForma').addEventListener('click', async () => {
       const shareData = {
         title: 'Nexus Forma',
@@ -234,6 +282,15 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         requestAnimationFrame(() => $('#chatSessionList').scrollIntoView({block: 'nearest', behavior: 'smooth'}));
       }
     }));
+    $('#homeContinueButton').addEventListener('click', async event => {
+      if (!setActiveView('chat')) return;
+      const sessionId = event.currentTarget.dataset.sessionId;
+      if (sessionId && activeChatUser && planHasFeature('history')) {
+        await openChatSession(sessionId);
+        return;
+      }
+      chatInput.focus({preventScroll: true});
+    });
     $$('[data-home-target]').forEach(button => button.addEventListener('click', () => {
       const target = document.getElementById(button.dataset.homeTarget);
       if (target?.classList.contains('home-agents')) {
@@ -253,6 +310,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     const FREE_TOKEN_LIMIT = 500_000;
     const chatSessionList = $('#chatSessionList');
     let activeChatUser = null;
+    let myFeedbackLoadVersion = 0;
     let activeChatSessionId = null;
     let savedChatSessions = [];
     let chatHistoryBusy = false;
@@ -499,9 +557,149 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       if ([...select.options].some(option => option.value === selectedModel)) select.value = selectedModel;
     }
 
+    const MINI_AGENT_PRESETS = [
+      {
+        id: 'whatsapp-sales', name: 'Ventas por WhatsApp', icon: '<path d="m4 5 17-2-7 18-3-7-7-3Z"/><path d="m11 14 10-11"/>',
+        description: 'Responde consultas con un tono cercano y deja el mensaje listo para copiar.',
+        example: 'Cliente: Hola, ¿tenés la 42 en negro? ¿Cuánto sale con envío a Santa Fe?', requiresPro: true,
+        instructions: 'Eres asistente de ventas por WhatsApp. Escribe respuestas breves, cercanas y listas para copiar. Usa solo precios, stock, condiciones y datos de envío que el usuario haya proporcionado; nunca los inventes. Si falta un dato necesario, haz una pregunta concreta antes de prometer algo.',
+      },
+      {
+        id: 'writer', name: 'Escritor', icon: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6m-6 4h6m-6 4h4"/>',
+        description: 'Redacta y pule correos, mensajes y textos con el tono que necesitas.',
+        example: 'Escribí un mail breve para pedir un presupuesto.', requiresPro: true,
+        instructions: 'Eres un asistente de escritura en español. Redacta textos claros, naturales y bien estructurados según el propósito indicado. Respeta los datos y la intención originales, no agregues hechos y ofrece opciones de tono cuando sean útiles.',
+      },
+      {
+        id: 'programmer', name: 'Programador', icon: '<path d="m8 8-4 4 4 4m8-8 4 4-4 4m-3-10-2 12"/>',
+        description: 'Escribe código, explica decisiones y ayuda a revisar errores.',
+        example: 'Hacé una función en Python que lea un CSV sin pandas.', requiresPro: true,
+        instructions: 'Eres un asistente de programación. Propón soluciones funcionales y adecuadas al lenguaje y contexto. Explica brevemente cómo usarlas y señala supuestos importantes. No afirmes que ejecutaste o probaste código si no se ejecutó; pide el error o contexto que falte.',
+      },
+      {
+        id: 'ideas', name: 'Lluvia de ideas', icon: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 15 1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1 1-2.5Z"/>',
+        description: 'Propone opciones concretas cuando todavía no sabes por dónde empezar.',
+        example: 'Dame 10 nombres para un emprendimiento de panificados.', requiresPro: true,
+        instructions: 'Eres un facilitador de ideas. Genera opciones variadas, concretas y fáciles de comparar para el objetivo indicado. Evita repetir la misma idea con otras palabras; organiza listas y añade una breve razón cuando ayude a elegir.',
+      },
+      {
+        id: 'summarizer', name: 'Resumidor', icon: '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
+        description: 'Convierte textos extensos en puntos clave, sin agregar información.',
+        example: 'Resumí esto en 5 bullets: [pegá aquí el texto]', requiresPro: false,
+        instructions: 'Eres un asistente de síntesis. Resume únicamente el contenido que te entreguen, conserva los datos y matices importantes, no inventes información y distingue con claridad hechos de opiniones. Si falta el texto, pídelo. Cuando soliciten cinco puntos, entrega exactamente cinco.',
+      },
+      {
+        id: 'explainer', name: 'Explicador', icon: '<path d="M9 18h6m-5 3h4m-2-19a7 7 0 0 0-4 12.7c.5.4 1 1 1 1.8h6c0-.8.5-1.4 1-1.8A7 7 0 0 0 12 2Z"/>',
+        description: 'Explica temas complejos con palabras simples y ejemplos cotidianos.',
+        example: 'Explicame cómo funciona un transformador.', requiresPro: true,
+        instructions: 'Eres un explicador paciente. Desglosa temas difíciles en pasos sencillos, define los términos necesarios y utiliza analogías o ejemplos cotidianos sin distorsionar el concepto. Ajusta el detalle a la pregunta y admite cuando algo depende del contexto.',
+      },
+      {
+        id: 'translator', name: 'Traductor', icon: '<path d="m5 8 6 6m-7 0 6-6 2-2M2 5h12M7 2v3m6 19 5-12 5 12m-8-4h6"/>',
+        description: 'Traduce entre español e inglés conservando sentido y tono.',
+        example: 'Pasá esto a inglés natural: [pegá aquí el texto]', requiresPro: true,
+        instructions: 'Eres un traductor español-inglés. Traduce al idioma opuesto cuando el destino no se indique, conserva el significado, el tono y los nombres propios, y adapta expresiones para que suenen naturales. Devuelve solo la traducción salvo que pidan una explicación.',
+      },
+      {
+        id: 'brand-strategist', name: 'Estratega de marca', icon: '<path d="M12 3 20 7v10l-8 4-8-4V7l8-4Z"/><path d="m8 10 4 2 4-2m-4 2v5"/>',
+        description: 'Define posicionamiento, audiencia y una voz de marca coherente.',
+        example: 'Ayúdame a definir el tono de voz para una marca de café de especialidad.', premiumOnly: true,
+        instructions: 'Eres estratega de marca. Ayuda a definir audiencia, propuesta de valor, diferenciación y tono de voz a partir de los datos del usuario. Si falta contexto, pregunta lo esencial. No inventes investigación, resultados, certificaciones ni afirmaciones sobre competidores.',
+      },
+      {
+        id: 'content-planner', name: 'Planificador de contenido', icon: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4m8-4v4M3 9h18m-14 4h3m-3 4h8"/>',
+        description: 'Organiza publicaciones con formatos, ideas y llamados a la acción.',
+        example: 'Arma un calendario de 7 publicaciones para lanzar mi tienda de plantas.', premiumOnly: true,
+        instructions: 'Eres estratega de contenido. Diseña calendarios editoriales claros, adaptados a la audiencia, plataforma y objetivo que indique el usuario. Incluye fecha o día, formato, idea principal y llamado a la acción. No presentes tendencias actuales como verificadas si no hay búsqueda web.',
+      },
+      {
+        id: 'data-analyst', name: 'Analista de datos', icon: '<path d="M4 19V5m0 14h17M8 15l3-4 3 2 5-7"/><path d="M16 6h3v3"/>',
+        description: 'Encuentra patrones y anomalías en los datos que compartas.',
+        example: 'Analiza estas ventas y señala tendencias: [pega los datos]', premiumOnly: true,
+        instructions: 'Eres analista de datos. Analiza únicamente los datos proporcionados, explica los cálculos de manera breve y distingue observaciones de hipótesis. No inventes valores ni causalidad. Si faltan columnas, período o contexto para responder, indícalo y pregunta lo necesario.',
+      },
+    ];
+
+    function canUseMiniAgentPreset(preset) {
+      if (preset.premiumOnly) return activePlanId() === 'premium' && canCreateMiniAgents();
+      return !preset.requiresPro || canCreateMiniAgents();
+    }
+
+    function activateMiniAgentPreset(preset) {
+      if (!canUseMiniAgentPreset(preset)) return setActiveView('plans');
+      if (!activeChatUser) return toast('Inicia sesión para usar agentes en el chat.');
+      if (chatBusy || chatHistoryBusy) return toast('Espera a que termine el chat actual antes de cambiar de agente.');
+      if (!setActiveView('chat')) return;
+      resetActiveChat();
+      const modelSelect = $('#chatModel');
+      if (!hasModelAccess(modelSelect.value)) {
+        const availableFreeModel = (configuredModels.length ? configuredModels : DEFAULT_MODELS)
+          .find(model => model.enabled !== false && (model.tier || 'free') === 'free'
+            && [...modelSelect.options].some(option => option.value === model.id));
+        if (!availableFreeModel) return toast('No hay un modelo gratuito habilitado para esta plantilla.');
+        modelSelect.value = availableFreeModel.id;
+        modelSelect.dispatchEvent(new Event('change', {bubbles: true}));
+      }
+      setActiveMiniAgent({id: `preset:${preset.id}`, name: preset.name, instructions: preset.instructions});
+      chatInput.value = preset.example;
+      chatInput.dispatchEvent(new Event('input'));
+      chatInput.focus({preventScroll: true});
+    }
+
+    function renderMiniAgentTemplates() {
+      const list = $('#miniAgentPresetList');
+      if (!list) return;
+      list.replaceChildren();
+      for (const preset of MINI_AGENT_PRESETS) {
+        const locked = !canUseMiniAgentPreset(preset);
+        const isActive = activeMiniAgentId === `preset:${preset.id}`;
+        const card = document.createElement('article');
+        card.className = `mini-agent-template-card${locked ? ' is-locked' : ''}${isActive ? ' is-active' : ''}`;
+        const header = document.createElement('div');
+        header.className = 'mini-agent-template-head';
+        const icon = document.createElement('span');
+        icon.className = 'mini-agent-template-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = `<svg viewBox="0 0 24 24">${preset.icon}</svg>`;
+        const copy = document.createElement('div');
+        copy.className = 'mini-agent-template-copy';
+        const title = document.createElement('h3');
+        title.textContent = preset.name;
+        const description = document.createElement('p');
+        description.textContent = preset.description;
+        copy.append(title, description);
+        const access = document.createElement('span');
+        access.className = `mini-agent-template-access${locked ? ' is-locked' : ''}`;
+        if (locked) access.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>${preset.premiumOnly ? 'Premium' : 'Pro+'}</span>`;
+        else access.textContent = preset.premiumOnly ? 'Premium' : preset.requiresPro ? 'De pago' : 'Gratis';
+        header.append(icon, copy, access);
+
+        const example = document.createElement('div');
+        example.className = 'mini-agent-template-example';
+        const exampleLabel = document.createElement('small');
+        exampleLabel.textContent = 'EJEMPLO';
+        const exampleText = document.createElement('p');
+        exampleText.textContent = preset.example;
+        example.append(exampleLabel, exampleText);
+
+        const useButton = document.createElement('button');
+        useButton.type = 'button';
+        useButton.className = `mini-agent-template-use${locked ? ' is-locked' : ''}`;
+        useButton.textContent = locked ? 'Ver planes' : isActive ? 'Activo en el chat' : 'Probar en chat';
+        useButton.setAttribute('aria-pressed', String(isActive));
+        useButton.addEventListener('click', () => {
+          if (locked) setActiveView('plans');
+          else activateMiniAgentPreset(preset);
+        });
+        card.append(header, example, useButton);
+        list.append(card);
+      }
+    }
+
     function renderMiniAgents() {
       const list = $('#miniAgentList');
       if (!list) return;
+      renderMiniAgentTemplates();
       const canCreate = canCreateMiniAgents();
       $('#miniAgentCreateSection').hidden = !canCreate;
       $('#miniAgentCount').textContent = String(userMiniAgents.length);
@@ -592,7 +790,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       try {
         const snapshot = await getDocs(collection(db, 'users', activeChatUser.uid, 'miniAgents'));
         userMiniAgents = snapshot.docs.map(item => ({id: item.id, ...item.data()}));
-        if (activeMiniAgentId && !userMiniAgents.some(agent => agent.id === activeMiniAgentId)) setActiveMiniAgent();
+        if (activeMiniAgentId && !activeMiniAgentId.startsWith('preset:') && !userMiniAgents.some(agent => agent.id === activeMiniAgentId)) setActiveMiniAgent();
       } catch (error) {
         userMiniAgents = [];
         console.warn('No se pudieron cargar los mini agentes:', error);
@@ -1018,7 +1216,41 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       return collection(db, 'users', activeChatUser.uid, 'chatSessions');
     }
 
+    function renderHomeContinue() {
+      const button = $('#homeContinueButton');
+      if (!button) return;
+      const signedIn = Boolean(auth.currentUser && activeChatUser);
+      const hasHistory = Boolean(signedIn && planHasFeature('history'));
+      const session = hasHistory
+        ? savedChatSessions.find(item => item.id === activeChatSessionId) || savedChatSessions[0]
+        : null;
+      const heading = $('#homeContinueHeading');
+      const description = $('#homeContinueDescription');
+      const title = $('#homeContinueTitle');
+      const meta = $('#homeContinueMeta');
+      button.dataset.sessionId = session?.id || '';
+      if (session) {
+        heading.textContent = 'Seguí donde quedaste';
+        description.textContent = 'Retomá una conversación reciente.';
+        title.textContent = session.title || 'Conversación sin título';
+        const updatedAt = session.updatedAt?.toDate?.() || (session.updatedAt ? new Date(session.updatedAt) : null);
+        meta.textContent = updatedAt && !Number.isNaN(updatedAt.getTime())
+          ? `Última actividad · ${updatedAt.toLocaleDateString('es-AR', {day: 'numeric', month: 'short'})}`
+          : 'Conversación reciente';
+        button.setAttribute('aria-label', `Continuar conversación: ${session.title || 'conversación reciente'}`);
+      } else {
+        heading.textContent = 'Un buen lugar para empezar';
+        description.textContent = hasHistory
+          ? 'Tu primera conversación va a aparecer acá.'
+          : signedIn ? 'El historial no está incluido en tu plan actual.' : 'Iniciá sesión para retomar tus conversaciones.';
+        title.textContent = 'Empezar un chat';
+        meta.textContent = 'Abrí el asistente y empezá algo nuevo.';
+        button.setAttribute('aria-label', 'Empezar un chat');
+      }
+    }
+
     function renderChatSessions() {
+      renderHomeContinue();
       chatSessionList.replaceChildren();
       $('#clearChatHistory').disabled = !savedChatSessions.length || chatHistoryBusy;
       if (!savedChatSessions.length) {
@@ -1294,7 +1526,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     }
 
     function appendInlineChatText(parent, text) {
-      const tokenPattern = /(\[[^\]\n]+\]\(https:\/\/[^\s)]+\)|\*\*[^*\n]+\*\*|`[^`\n]+`|\*[^*\n]+\*)/g;
+      const tokenPattern = /(\[[^\]\n]+\]\(https:\/\/[^\s)]+\)|https:\/\/[^\s<]+|\*\*[^*\n]+\*\*|`[^`\n]+`|\*[^*\n]+\*)/g;
       const appendPlain = value => value.split('\n').forEach((line, index) => {
         if (index) parent.append(document.createElement('br'));
         if (line) parent.append(document.createTextNode(line));
@@ -1304,40 +1536,157 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         appendPlain(text.slice(position, match.index));
         const token = match[0];
         const linkMatch = token.match(/^\[([^\]]+)\]\((https:\/\/[^\s)]+)\)$/);
-        const element = document.createElement(linkMatch ? 'a' : token.startsWith('**') ? 'strong' : token.startsWith('`') ? 'code' : 'em');
-        element.className = token.startsWith('`') ? 'chat-inline-code' : '';
-        if (linkMatch) {
-          element.href = linkMatch[2];
-          element.target = '_blank';
-          element.rel = 'noopener noreferrer';
-          element.textContent = linkMatch[1];
+        if (linkMatch || token.startsWith('https://')) {
+          const rawUrl = linkMatch ? linkMatch[2] : token;
+          const trailingPunctuation = linkMatch ? '' : (rawUrl.match(/[.,!?;:]+$/)?.[0] || '');
+          const href = trailingPunctuation ? rawUrl.slice(0, -trailingPunctuation.length) : rawUrl;
+          try {
+            const url = new URL(href);
+            if (url.protocol !== 'https:') throw new Error('Unsupported link protocol');
+            const label = linkMatch?.[1] || url.hostname;
+            const element = document.createElement('a');
+            element.className = 'chat-open-link';
+            element.href = url.href;
+            element.target = '_blank';
+            element.rel = 'noopener noreferrer';
+            element.setAttribute('aria-label', `Abrir ${label} en el navegador`);
+            const title = document.createElement('span');
+            title.className = 'chat-open-link-title';
+            title.textContent = label;
+            const action = document.createElement('span');
+            action.className = 'chat-open-link-action';
+            action.textContent = 'Abrir en el navegador';
+            element.append(title, action);
+            parent.append(element);
+            if (trailingPunctuation) parent.append(document.createTextNode(trailingPunctuation));
+          } catch {
+            appendPlain(token);
+          }
         } else {
+          const element = document.createElement(token.startsWith('**') ? 'strong' : token.startsWith('`') ? 'code' : 'em');
+          element.className = token.startsWith('`') ? 'chat-inline-code' : '';
           element.textContent = token.startsWith('**') ? token.slice(2, -2) : token.slice(1, -1);
+          parent.append(element);
         }
-        parent.append(element);
         position = match.index + token.length;
       }
       appendPlain(text.slice(position));
     }
 
+    function extractChatCodeFiles(text) {
+      const extensionByLanguage = {
+        html: 'html', htm: 'html', css: 'css', javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts',
+        json: 'json', markdown: 'md', md: 'md', python: 'py', py: 'py', text: 'txt', plaintext: 'txt',
+        bash: 'sh', sh: 'sh', xml: 'xml', svg: 'svg', yaml: 'yml', yml: 'yml', sql: 'sql',
+      };
+      return [...text.matchAll(/```([^\n`]*)\n([\s\S]*?)```/g)].map((match, index) => {
+        const info = match[1].trim();
+        const pathMatch = info.match(/(?:^|\s)(?:path|filename)=(?:"([^"]+)"|'([^']+)'|([^\s]+))/i);
+        const language = info.split(/\s+/, 1)[0].toLowerCase();
+        const extension = extensionByLanguage[language] || 'txt';
+        const name = pathMatch?.[1] || pathMatch?.[2] || pathMatch?.[3] || `archivo-${index + 1}.${extension}`;
+        return {name, content: match[2].replace(/\n$/, '')};
+      });
+    }
+
+    function saveChatDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function chatFileBasename(path) {
+      return path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'archivo.txt';
+    }
+
+    async function downloadChatFiles(files, button) {
+      const originalLabel = button.textContent;
+      button.disabled = true;
+      button.textContent = files.length > 1 ? 'Preparando ZIP…' : 'Preparando archivo…';
+      try {
+        if (files.length === 1) {
+          saveChatDownload(new Blob([files[0].content], {type: 'text/plain;charset=utf-8'}), chatFileBasename(files[0].name));
+          return;
+        }
+        const headers = await authenticatedHeaders();
+        const response = await fetch('/api/files/zip', {
+          method: 'POST', headers, body: JSON.stringify({files}),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'No se pudo crear el ZIP.');
+        }
+        saveChatDownload(await response.blob(), 'nexus-proyecto.zip');
+      } catch (error) {
+        toast(error.message || 'No se pudieron descargar los archivos.');
+      } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    }
+
+    function appendChatFileDownload(container, files) {
+      if (!files.length) return;
+      const actions = document.createElement('div');
+      actions.className = 'chat-artifact-actions';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chat-artifact-download';
+      button.textContent = files.length > 1
+        ? `Descargar ZIP (${files.length} archivos)`
+        : `Descargar ${chatFileBasename(files[0].name)}`;
+      button.addEventListener('click', () => downloadChatFiles(files, button));
+      actions.append(button);
+      container.append(actions);
+    }
+
     function renderChatAnswer(container, text) {
       container.replaceChildren();
-      const blocks = text.trim().split(/\n\s*\n/).filter(Boolean);
-      for (const block of blocks) {
-        const lines = block.split('\n');
-        const heading = lines.length === 1 ? lines[0].match(/^#{1,3}\s+(.+)/) : null;
-        const isList = lines.every(line => /^\s*(?:[-*]|\d+\.)\s+/.test(line));
-        if (heading) {
-          const element = document.createElement('h3'); appendInlineChatText(element, heading[1]); container.append(element);
-        } else if (isList) {
-          const numbered = /^\s*\d+\./.test(lines[0]);
-          const list = document.createElement(numbered ? 'ol' : 'ul');
-          lines.forEach(line => { const item = document.createElement('li'); appendInlineChatText(item, line.replace(/^\s*(?:[-*]|\d+\.)\s+/, '')); list.append(item); });
-          container.append(list);
-        } else {
-          const paragraph = document.createElement('p'); appendInlineChatText(paragraph, block); container.append(paragraph);
+      const codeBlocks = [...text.matchAll(/```([^\n`]*)\n([\s\S]*?)```/g)];
+      const files = extractChatCodeFiles(text);
+      const appendText = value => {
+        const blocks = value.trim().split(/\n\s*\n/).filter(Boolean);
+        for (const block of blocks) {
+          const lines = block.split('\n');
+          const heading = lines.length === 1 ? lines[0].match(/^#{1,3}\s+(.+)/) : null;
+          const isList = lines.every(line => /^\s*(?:[-*]|\d+\.)\s+/.test(line));
+          if (heading) {
+            const element = document.createElement('h3'); appendInlineChatText(element, heading[1]); container.append(element);
+          } else if (isList) {
+            const numbered = /^\s*\d+\./.test(lines[0]);
+            const list = document.createElement(numbered ? 'ol' : 'ul');
+            lines.forEach(line => { const item = document.createElement('li'); appendInlineChatText(item, line.replace(/^\s*(?:[-*]|\d+\.)\s+/, '')); list.append(item); });
+            container.append(list);
+          } else {
+            const paragraph = document.createElement('p'); appendInlineChatText(paragraph, block); container.append(paragraph);
+          }
         }
-      }
+      };
+      let position = 0;
+      codeBlocks.forEach((match, index) => {
+        appendText(text.slice(position, match.index));
+        const frame = document.createElement('section');
+        frame.className = 'chat-code-frame';
+        const title = document.createElement('div');
+        title.className = 'chat-code-title';
+        title.textContent = files[index]?.name || 'Código';
+        const pre = document.createElement('pre');
+        pre.className = 'chat-code-block';
+        const code = document.createElement('code');
+        code.textContent = files[index]?.content || '';
+        pre.append(code);
+        frame.append(title, pre);
+        container.append(frame);
+        position = match.index + match[0].length;
+      });
+      appendText(text.slice(position));
+      appendChatFileDownload(container, files);
     }
 
     function appendChatMessage(role, text, thinking = false, attachments = []) {
@@ -1532,6 +1881,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
             images,
             ...(audio ? {audio} : {}),
             ...(activeAgentInstructions ? {agentName: activeAgentName, agentInstructions: activeAgentInstructions} : {}),
+            ...(activeMiniAgentId.startsWith('preset:') ? {agentPresetId: activeMiniAgentId.slice(7)} : {}),
             explainSteps: explainStepsEnabled,
             webSearch: webSearchEnabled,
           })
@@ -1567,6 +1917,15 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     }
 
     chatForm.addEventListener('submit', event => { event.preventDefault(); sendChatMessage(chatInput.value); });
+    const chatWorkspace = $('#chatWorkspace');
+    const chatFocusToggle = $('#chatFocusToggle');
+    chatFocusToggle.addEventListener('click', () => {
+      const focused = chatWorkspace.classList.toggle('focus-mode');
+      chatFocusToggle.setAttribute('aria-pressed', String(focused));
+      const label = focused ? 'Salir del chat ampliado' : 'Ampliar chat';
+      chatFocusToggle.setAttribute('aria-label', label);
+      chatFocusToggle.title = label;
+    });
     $('#chatModel').addEventListener('change', () => {
       updateSelectedModelUI();
       saveUserPreference('model', $('#chatModel').value);
@@ -1766,15 +2125,136 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     window.setInterval(syncChatButton, 1000);
     syncChatButton();
 
+    function renderMyFeedback(items = []) {
+      const list = $('#myFeedbackList');
+      const count = $('#myFeedbackCount');
+      list.replaceChildren();
+      count.textContent = String(items.length);
+      if (!items.length) {
+        const empty = document.createElement('p');
+        empty.className = 'history-loading';
+        empty.textContent = activeChatUser
+          ? 'Todavía no enviaste propuestas.'
+          : 'Inicia sesión para enviar y consultar tus propuestas.';
+        list.append(empty);
+        return;
+      }
+      const typeLabels = {idea: 'Idea', problem: 'Problema', praise: 'Reconocimiento', other: 'Comentario'};
+      const areaLabels = {general: 'Experiencia general', chat: 'Chat IA', image: 'Crear imagen', editor: 'Edición', plans: 'Planes y pagos', agents: 'Mini agentes', account: 'Cuenta'};
+      for (const item of items) {
+        const card = document.createElement('article');
+        card.className = 'feedback-submission-card';
+        const header = document.createElement('div');
+        header.className = 'feedback-submission-header';
+        const title = document.createElement('strong');
+        title.textContent = item.title || 'Propuesta';
+        const status = document.createElement('span');
+        status.className = `feedback-status is-${item.status || 'pending'}`;
+        status.textContent = ({pending: 'En revisión', accepted: 'Aceptada', rejected: 'No seleccionada'})[item.status] || 'En revisión';
+        header.append(title, status);
+        const details = document.createElement('p');
+        details.textContent = item.details || '';
+        const date = item.createdAt?.toDate?.() || (item.createdAt ? new Date(item.createdAt) : null);
+        const meta = document.createElement('small');
+        meta.textContent = `${typeLabels[item.type] || 'Feedback'} · ${areaLabels[item.area] || 'Experiencia general'} · ${item.rating || 0}/5${date && !Number.isNaN(date.getTime()) ? ` · ${date.toLocaleDateString('es-AR')}` : ''}`;
+        card.append(header, details, meta);
+        if (item.response) {
+          const response = document.createElement('div');
+          response.className = 'feedback-response';
+          const responseTitle = document.createElement('strong');
+          responseTitle.textContent = 'Respuesta de Nexus';
+          const responseText = document.createElement('p');
+          responseText.textContent = item.response;
+          response.append(responseTitle, responseText);
+          card.append(response);
+        } else if (item.status === 'pending') {
+          const waiting = document.createElement('small');
+          waiting.className = 'feedback-waiting';
+          waiting.textContent = 'El equipo está revisando tu propuesta.';
+          card.append(waiting);
+        }
+        list.append(card);
+      }
+    }
+
+    async function loadMyFeedback() {
+      const loadVersion = ++myFeedbackLoadVersion;
+      const user = activeChatUser;
+      if (!user) return renderMyFeedback([]);
+      try {
+        const snapshot = await getDocs(query(collection(db, 'feedback'), where('uid', '==', user.uid), limit(50)));
+        if (loadVersion !== myFeedbackLoadVersion || activeChatUser?.uid !== user.uid) return;
+        const items = snapshot.docs
+          .map(item => ({id: item.id, ...item.data()}))
+          .sort((left, right) => (right.createdAt?.toDate?.().getTime?.() || 0) - (left.createdAt?.toDate?.().getTime?.() || 0));
+        renderMyFeedback(items);
+      } catch (error) {
+        console.warn('No se pudo cargar el feedback del usuario:', error);
+        if (loadVersion !== myFeedbackLoadVersion) return;
+        $('#myFeedbackList').textContent = error.code === 'permission-denied'
+          ? 'Firestore no permite consultar tus propuestas. Publica las reglas actualizadas.'
+          : 'No se pudieron cargar tus propuestas.';
+      }
+    }
+
+    $('#feedbackForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const feedbackStatus = $('#feedbackFormStatus');
+      const sendButton = $('#sendFeedback');
+      const user = activeChatUser;
+      if (!user) {
+        feedbackStatus.textContent = 'Inicia sesión para enviar una propuesta.';
+        return;
+      }
+      const title = $('#feedbackTitleInput').value.trim();
+      const details = $('#feedbackDetails').value.trim();
+      const rating = Number(new FormData(event.currentTarget).get('feedbackRating'));
+      if (!title || !details || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+        feedbackStatus.textContent = 'Completa el título, los detalles y tu valoración.';
+        return;
+      }
+      sendButton.disabled = true;
+      sendButton.textContent = 'Enviando…';
+      feedbackStatus.textContent = '';
+      try {
+        await addDoc(collection(db, 'feedback'), {
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || user.email?.split('@')[0] || 'Usuario',
+          type: $('#feedbackType').value,
+          area: $('#feedbackArea').value,
+          title: title.slice(0, 90),
+          details: details.slice(0, 1800),
+          rating,
+          status: 'pending',
+          response: '',
+          createdAt: serverTimestamp(),
+        });
+        event.currentTarget.reset();
+        feedbackStatus.textContent = 'Propuesta enviada. Gracias por ayudar a mejorar Nexus.';
+        toast('Feedback enviado al equipo.');
+        await loadMyFeedback();
+      } catch (error) {
+        feedbackStatus.textContent = error.code === 'permission-denied'
+          ? 'No se pudo enviar. Publica las reglas actualizadas de Firestore e inténtalo otra vez.'
+          : 'No se pudo enviar tu propuesta. Revisa la conexión e inténtalo otra vez.';
+      } finally {
+        sendButton.disabled = false;
+        sendButton.textContent = 'Enviar propuesta';
+      }
+    });
+
     authReady.then(() => onAuthStateChanged(auth, async user => {
       $('#homeSessionNote').textContent = user
         ? 'Tus conversaciones quedan guardadas en tu cuenta.'
         : 'Iniciá sesión para guardar tus conversaciones.';
-      if (!user) return;
+      renderHomeContinue();
+      if (!user) { activeChatUser = null; renderMyFeedback([]); return; }
       activeChatUser = user;
       await loadModelConfiguration(user);
       await loadMiniAgents();
       loadPhotoCleanupStatus();
+      loadMyFeedback();
       loadTokenUsage();
       loadChatSessions();
       loadUsagePeriod();
@@ -1801,9 +2281,48 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     $$('#ratios button').forEach(button => button.addEventListener('click', () => { ratio = button.dataset.ratio; $$('#ratios button').forEach(item => item.classList.toggle('selected', item === button)); $('#resultMeta').textContent = `Imagen generada · ${ratio}`; }));
 
     let generationAllowedAt = 0;
-    $('#generate').addEventListener('click', () => {
+    let imageLimitRetryAt = 0;
+    let imageLimitCountdownTimer = 0;
+    let generatedImageObjectUrl = '';
+    const imageLimitDialog = $('#imageLimitDialog');
+
+    function updateImageLimitCountdown() {
+      const secondsLeft = Math.max(0, Math.ceil((imageLimitRetryAt - Date.now()) / 1000));
+      if (!secondsLeft) {
+        $('#imageLimitCountdown').textContent = 'Ya puedes crear otra imagen';
+        imageLimitRetryAt = 0;
+        window.clearInterval(imageLimitCountdownTimer);
+        imageLimitCountdownTimer = 0;
+        return;
+      }
+      const hours = Math.floor(secondsLeft / 3600);
+      const minutes = Math.floor((secondsLeft % 3600) / 60);
+      const seconds = secondsLeft % 60;
+      $('#imageLimitCountdown').textContent = [
+        hours ? `${hours} h` : '', minutes ? `${minutes} min` : '', `${seconds} s`,
+      ].filter(Boolean).join(' ');
+    }
+
+    function showImageLimitDialog(retryAfterSeconds) {
+      imageLimitRetryAt = Date.now() + Math.max(0, Number(retryAfterSeconds) || 0) * 1000;
+      window.clearInterval(imageLimitCountdownTimer);
+      updateImageLimitCountdown();
+      if (!imageLimitDialog.open) imageLimitDialog.showModal();
+      if (imageLimitRetryAt) imageLimitCountdownTimer = window.setInterval(updateImageLimitCountdown, 1000);
+    }
+
+    $('#closeImageLimit').addEventListener('click', () => imageLimitDialog.close());
+    $('#imageLimitPlans').addEventListener('click', () => { imageLimitDialog.close(); setActiveView('plans'); });
+    imageLimitDialog.addEventListener('click', event => { if (event.target === imageLimitDialog) imageLimitDialog.close(); });
+    imageLimitDialog.addEventListener('close', () => { window.clearInterval(imageLimitCountdownTimer); imageLimitCountdownTimer = 0; });
+
+    $('#generate').addEventListener('click', async () => {
       const description = prompt.value.trim();
       if (!description) { prompt.focus(); return toast('Escribe una descripción para empezar.'); }
+      if (imageLimitRetryAt > Date.now()) {
+        showImageLimitDialog(Math.ceil((imageLimitRetryAt - Date.now()) / 1000));
+        return;
+      }
       const wait = Math.ceil((generationAllowedAt - Date.now()) / 1000);
       if (wait > 0) return toast(`La API gratis permite otra imagen en ${wait} s.`);
       const style = $('.chip.selected', $('#styles')).dataset.style;
@@ -1830,37 +2349,70 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       const seed = enteredSeed ? Number(enteredSeed) : Math.floor(Math.random() * 1_000_000);
       if (!Number.isInteger(seed) || seed < 0 || seed >= 1_000_000) return toast('La semilla debe ser un número entre 0 y 999999.');
       $('#imageSeed').value = String(seed);
-      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=${dimensions[0]}&height=${dimensions[1]}&seed=${seed}&safe=true`;
       const image = $('#generatedImage'); const button = $('#generate'); const empty = $('#previewEmpty');
       generationAllowedAt = Date.now() + 45000;
       button.disabled = true; $('span', button).textContent = 'Generando…';
       $('#loadingTitle').textContent = 'Creando tu imagen'; $('#loadingDetail').textContent = 'La API gratuita puede tardar un poco.';
       empty.classList.add('show'); $('#imageStatus').textContent = 'Generando imagen…';
-      image.onload = () => {
-        empty.classList.remove('show'); image.style.visibility = 'visible'; $('#imageStatus').textContent = 'Imagen lista'; $('#imageCaption').textContent = `${description.slice(0, 34)}${description.length > 34 ? '…' : ''}`; $('#resultMeta').textContent = `Generada · ${ratio}`; button.disabled = false; $('span', button).textContent = 'Generar imagen';
-        if (canUseImageLibrary()) {
-          saveGeneratedImage(image, imagePrompt, ratio, seed).then(saved => {
-            if (!saved) return;
-            $('#imageStatus').textContent = 'Guardada en tu biblioteca';
-            toast('Imagen guardada en la Biblioteca.');
-            if ($('.view.active')?.id === 'view-library') loadImageLibrary();
-          }).catch(error => {
-            console.error('No se pudo guardar la imagen en Firestore:', error);
-            const reason = error?.code === 'permission-denied'
-              ? 'Firestore denegó el permiso. Verifica que el perfil tenga Pro o Premium vigente y que las reglas estén publicadas en el mismo proyecto.'
-              : error?.code === 'resource-exhausted'
-                ? 'Firestore rechazó el tamaño del documento.'
-                : error?.name === 'TypeError'
-                  ? 'No se pudo descargar la imagen del proveedor; revisa la conexión.'
-                  : error?.message || 'Error desconocido.';
-            toast(`La imagen se creó, pero no se pudo guardar: ${reason}`);
-          });
+      image.style.visibility = 'hidden';
+      try {
+        const headers = await authenticatedHeaders();
+        const response = await fetch('/api/images/generate', {
+          method: 'POST', headers,
+          body: JSON.stringify({prompt: imagePrompt, width: dimensions[0], height: dimensions[1], seed}),
+        });
+        const data = response.headers.get('Content-Type')?.includes('application/json')
+          ? await response.json()
+          : null;
+        if (response.status === 429) {
+          empty.classList.remove('show'); image.style.visibility = 'visible';
+          $('#imageStatus').textContent = 'Límite diario alcanzado';
+          button.disabled = false; $('span', button).textContent = 'Generar imagen';
+          showImageLimitDialog(data?.retryAfterSeconds || 0);
+          return;
         }
-      };
-      image.onerror = () => { empty.classList.add('show'); $('#loadingTitle').textContent = 'No se pudo generar'; $('#loadingDetail').textContent = 'La API puede estar ocupada. Inténtalo más tarde.'; $('#imageStatus').textContent = 'Error de generación'; button.disabled = false; $('span', button).textContent = 'Intentar de nuevo'; };
-      image.crossOrigin = 'anonymous';
-      image.style.visibility = 'hidden'; image.src = url;
-      toast('Solicitud enviada. La API gratuita limita la frecuencia.');
+        if (!response.ok) throw new Error(data?.error || 'No se pudo generar la imagen. Inténtalo más tarde.');
+        const quotaRemaining = response.headers.get('X-Image-Quota-Remaining');
+        const retryAfter = Number(response.headers.get('X-Image-Retry-After')) || 0;
+        const blob = await response.blob();
+        if (!blob.type.startsWith('image/')) throw new Error('El proveedor devolvió un formato de imagen no válido.');
+        const objectUrl = URL.createObjectURL(blob);
+        const previousObjectUrl = generatedImageObjectUrl;
+        generatedImageObjectUrl = objectUrl;
+        image.onload = () => {
+          image.onload = null; image.onerror = null;
+          if (previousObjectUrl) URL.revokeObjectURL(previousObjectUrl);
+          empty.classList.remove('show'); image.style.visibility = 'visible'; $('#imageStatus').textContent = 'Imagen lista'; $('#imageCaption').textContent = `${description.slice(0, 34)}${description.length > 34 ? '…' : ''}`; $('#resultMeta').textContent = `Generada · ${ratio}`; button.disabled = false; $('span', button).textContent = 'Generar imagen';
+          if (quotaRemaining === '0') showImageLimitDialog(retryAfter);
+          if (canUseImageLibrary()) {
+            saveGeneratedImage(image, imagePrompt, ratio, seed).then(saved => {
+              if (!saved) return;
+              $('#imageStatus').textContent = 'Guardada en tu biblioteca';
+              toast('Imagen guardada en la Biblioteca.');
+              if ($('.view.active')?.id === 'view-library') loadImageLibrary();
+            }).catch(error => {
+              console.error('No se pudo guardar la imagen en Firestore:', error);
+              const reason = error?.code === 'permission-denied'
+                ? 'Firestore denegó el permiso. Verifica que el perfil tenga Pro o Premium vigente y que las reglas estén publicadas en el mismo proyecto.'
+                : error?.code === 'resource-exhausted'
+                  ? 'Firestore rechazó el tamaño del documento.'
+                  : error?.name === 'TypeError'
+                    ? 'No se pudo descargar la imagen del proveedor; revisa la conexión.'
+                    : error?.message || 'Error desconocido.';
+              toast(`La imagen se creó, pero no se pudo guardar: ${reason}`);
+            });
+          }
+        };
+        image.onerror = () => {
+          image.onload = null; image.onerror = null; URL.revokeObjectURL(objectUrl);
+          if (generatedImageObjectUrl === objectUrl) generatedImageObjectUrl = previousObjectUrl;
+          empty.classList.add('show'); $('#loadingTitle').textContent = 'No se pudo generar'; $('#loadingDetail').textContent = 'La respuesta del proveedor no se pudo abrir como imagen.'; $('#imageStatus').textContent = 'Error de generación'; button.disabled = false; $('span', button).textContent = 'Intentar de nuevo';
+        };
+        image.src = objectUrl;
+        toast('Solicitud enviada al generador.');
+      } catch (error) {
+        empty.classList.add('show'); $('#loadingTitle').textContent = 'No se pudo generar'; $('#loadingDetail').textContent = error.message || 'Inténtalo más tarde.'; $('#imageStatus').textContent = 'Error de generación'; button.disabled = false; $('span', button).textContent = 'Intentar de nuevo';
+      }
     });
     $('#openImage').addEventListener('click', () => window.open($('#generatedImage').src, '_blank', 'noopener'));
     $('#downloadImage').addEventListener('click', async () => {
@@ -1868,6 +2420,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       catch { window.open($('#generatedImage').src, '_blank', 'noopener'); toast('Imagen abierta en otra pestaña; puedes guardarla desde allí.'); }
     });
     $$('.thumb').forEach(thumb => thumb.addEventListener('click', () => {
+      if (generatedImageObjectUrl) { URL.revokeObjectURL(generatedImageObjectUrl); generatedImageObjectUrl = ''; }
       $$('.thumb').forEach(item => item.classList.toggle('active', item === thumb)); $('#generatedImage').src = thumb.dataset.image; $('#imageCaption').textContent = thumb.dataset.caption; $('#resultMeta').textContent = 'Imagen de inspiración · 1:1'; $('#imageStatus').textContent = 'Vista de inspiración';
     }));
     $('#shuffleGallery').addEventListener('click', () => { const thumbs = $$('.thumb'); thumbs.push(thumbs.shift()); thumbs.forEach(node => $('.thumbs').append(node)); });

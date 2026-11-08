@@ -10,6 +10,9 @@ const adminUserSearch = document.querySelector('#adminUserSearch');
 const adminUserEmail = document.querySelector('#adminUserEmail');
 const adminUserPlan = document.querySelector('#adminUserPlan');
 const adminUserDuration = document.querySelector('#adminUserDuration');
+const adminUserCustomTag = document.querySelector('#adminUserCustomTag');
+const adminUserTokenCredits = document.querySelector('#adminUserTokenCredits');
+const adminUserTokenCreditsDuration = document.querySelector('#adminUserTokenCreditsDuration');
 const adminButton = document.querySelector('#adminButton');
 const ADMIN_EMAILS = new Set(['santhiagocaro05@gmail.com', 'admin@forma.app']);
 let PREMIUM_MODELS = ['Nexus-Premium', 'Nexus-SST', 'Nexus-Sonet', 'Nexus-Astra'];
@@ -50,14 +53,43 @@ function renderAdminPremiumModelOptions(models = null) {
   }
 }
 
+function renderAdminCustomFeatureOptions(features = [], selectedFeatures = []) {
+  const container = document.querySelector('#adminCustomFeatureOptions');
+  if (!container) return;
+  const selected = new Set(selectedFeatures);
+  container.replaceChildren();
+  for (const feature of features) {
+    if (!feature?.id || !feature.label) continue;
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.name = 'customFeatures';
+    checkbox.value = feature.id;
+    checkbox.checked = selected.has(feature.id);
+    const text = document.createElement('span');
+    text.textContent = feature.label;
+    label.append(checkbox, text);
+    container.append(label);
+  }
+  if (!container.children.length) {
+    const empty = document.createElement('span');
+    empty.className = 'admin-premium-model-empty';
+    empty.textContent = 'Agrega funciones en Panel admin > Planes para asignarlas.';
+    container.append(empty);
+  }
+}
+
 async function loadAdminPremiumModelOptions() {
   try {
     const snapshot = await getDoc(doc(db, 'appConfig', 'public'));
-    const models = snapshot.exists() ? snapshot.data().models : null;
+    const settings = snapshot.exists() ? snapshot.data() : {};
+    const models = settings.models;
     renderAdminPremiumModelOptions(Array.isArray(models) ? models : null);
+    renderAdminCustomFeatureOptions(Array.isArray(settings.planFeatures) ? settings.planFeatures : []);
   } catch (error) {
     console.warn('No se pudo cargar el catálogo de modelos para los usuarios:', error);
     renderAdminPremiumModelOptions([]);
+    renderAdminCustomFeatureOptions([]);
   }
 }
 
@@ -233,7 +265,7 @@ async function loadProfilePurchases() {
       details.append(name, date);
       const state = document.createElement('span');
       state.className = `profile-purchase-status is-${purchase.status || 'pending'}`;
-      state.textContent = ({approved: 'Aprobada', rejected: 'Rechazada', pending: 'Pendiente'})[purchase.status] || 'En revisión';
+      state.textContent = ({approved: 'Aprobada', rejected: 'Rechazada', pending: 'Pendiente', reviewed: 'Revisada'})[purchase.status] || 'En revisión';
       row.append(details, state);
       list.append(row);
     }
@@ -344,6 +376,13 @@ function renderAdminUsers(filterText = '') {
     const email = document.createElement('small');
     email.textContent = user.email || 'Sin correo';
     copy.append(name, email);
+    const credits = Math.max(0, Number(user.tokenCredits || 0));
+    if (credits) {
+      const creditNote = document.createElement('small');
+      creditNote.className = 'admin-user-credit-note';
+      creditNote.textContent = `${credits.toLocaleString('es-AR')} tokens extra`;
+      copy.append(creditNote);
+    }
     const badge = document.createElement('span');
     badge.className = 'user-role-badge';
     if (label === 'Premium') badge.classList.add('is-premium');
@@ -351,14 +390,33 @@ function renderAdminUsers(filterText = '') {
     if (label === 'Alquiler') badge.classList.add('is-alquiler');
     badge.textContent = label;
     button.append(avatar, copy, badge);
+    if (user.customTag) {
+      const tag = document.createElement('span');
+      tag.className = 'admin-user-custom-tag';
+      tag.textContent = user.customTag;
+      button.append(tag);
+    }
     button.addEventListener('click', () => {
       const selected = user;
       if (!selected) return;
       adminUserEmail.value = selected.email || '';
       adminUserPlan.value = getAccessBadge(selected) || 'Gratis';
+      adminUserPlan.dispatchEvent(new Event('change'));
+      adminUserCustomTag.value = String(selected.customTag || '').slice(0, 32);
+      const creditsExpiry = selected.tokenCreditsExpiresAt?.toDate?.() || (selected.tokenCreditsExpiresAt ? new Date(selected.tokenCreditsExpiresAt) : null);
+      const activeCredits = Boolean(creditsExpiry && creditsExpiry.getTime() > Date.now());
+      adminUserTokenCredits.value = activeCredits ? String(Math.max(0, Number(selected.tokenCredits) || 0)) : '0';
+      const creditsDays = activeCredits
+        ? Math.max(1, Math.ceil((creditsExpiry.getTime() - Date.now()) / 86400000))
+        : 30;
+      adminUserTokenCreditsDuration.value = `${creditsDays} días`;
       const premiumMap = Array.isArray(selected.premiumModels) ? selected.premiumModels : [];
       document.querySelectorAll('input[name="premiumModels"]').forEach(input => {
         input.checked = premiumMap.includes(input.value);
+      });
+      const customFeatureMap = Array.isArray(selected.customFeatures) ? selected.customFeatures : [];
+      document.querySelectorAll('input[name="customFeatures"]').forEach(input => {
+        input.checked = customFeatureMap.includes(input.value);
       });
       const expiry = selected.expiresAt?.toDate?.() || (selected.expiresAt ? new Date(selected.expiresAt) : null);
       const remainingDays = expiry ? Math.max(1, Math.ceil((expiry.getTime() - Date.now()) / 86400000)) : null;
@@ -411,11 +469,15 @@ document.addEventListener('click', event => { if (!event.target.closest('.top-ac
 document.querySelector('#adminButton')?.addEventListener('click', openAdminPanel);
 window.addEventListener('model-config-updated', event => {
   if (Array.isArray(event.detail?.models)) renderAdminPremiumModelOptions(event.detail.models);
+  if (Array.isArray(event.detail?.planFeatures)) renderAdminCustomFeatureOptions(event.detail.planFeatures);
 });
 document.querySelector('#closeAdmin')?.addEventListener('click', () => adminDialog.close());
 adminDialog?.addEventListener('click', event => { if (event.target === adminDialog) adminDialog.close(); });
 document.querySelector('#refreshUsers')?.addEventListener('click', loadAdminUsers);
 adminUserSearch?.addEventListener('input', event => renderAdminUsers(event.target.value));
+adminUserPlan?.addEventListener('change', () => {
+  document.querySelector('#adminCustomFeaturesFieldset').hidden = adminUserPlan.value !== 'Personalizado';
+});
 
 document.querySelector('#adminForm')?.addEventListener('submit', async event => {
   event.preventDefault();
@@ -433,14 +495,28 @@ document.querySelector('#adminForm')?.addEventListener('submit', async event => 
   }
 
   const planValue = adminUserPlan.value;
-  const planId = ({ Gratis: 'free', Pro: 'pro', Estudio: 'studio', Premium: 'premium', Alquiler: 'rental' })[planValue] || 'free';
-  const planTokenLimit = ({ Gratis: 500000, Pro: 2000000, Estudio: 5000000, Premium: 1500000, Alquiler: 2000000 })[planValue] || 0;
+  const planId = ({ Gratis: 'free', Pro: 'pro', Estudio: 'studio', Premium: 'premium', Alquiler: 'rental', Personalizado: 'custom-plan' })[planValue] || 'free';
+  const planTokenLimit = ({ Gratis: 500000, Pro: 2000000, Estudio: 5000000, Premium: 1500000, Alquiler: 2000000, Personalizado: 500000 })[planValue] || 0;
+  const tokenCredits = Number.parseInt(adminUserTokenCredits.value || '0', 10);
+  if (!Number.isInteger(tokenCredits) || tokenCredits < 0 || tokenCredits > 50_000_000) {
+    adminUserTokenCredits.focus();
+    return;
+  }
+  const tokenCreditsExpiry = tokenCredits > 0 ? parseAccessDuration(adminUserTokenCreditsDuration.value) : null;
+  if (tokenCredits > 0 && !tokenCreditsExpiry) {
+    adminUserTokenCreditsDuration.focus();
+    return;
+  }
+  const customTag = adminUserCustomTag.value.trim().slice(0, 32);
   const selectedModels = [...document.querySelectorAll('input[name="premiumModels"]:checked')].map(node => node.value);
   const durationValue = adminUserDuration.value.trim();
   const expiresAt = parseAccessDuration(durationValue);
   const premiumModels = planValue === 'Premium'
     ? (selectedModels.length ? selectedModels : PREMIUM_MODELS)
-    : planValue === 'Alquiler' ? selectedModels : [];
+    : ['Alquiler', 'Personalizado'].includes(planValue) ? selectedModels : [];
+  const customFeatures = planValue === 'Personalizado'
+    ? [...document.querySelectorAll('input[name="customFeatures"]:checked')].map(node => node.value)
+    : [];
 
   const update = {
     displayName: selectedUser.displayName || selectedUser.email?.split('@')[0] || 'Usuario',
@@ -453,6 +529,10 @@ document.querySelector('#adminForm')?.addEventListener('submit', async event => 
     subscriptionType: planValue,
     premiumModels,
     planTokenLimit,
+    customFeatures,
+    customTag,
+    tokenCredits,
+    tokenCreditsExpiresAt: tokenCreditsExpiry ? Timestamp.fromDate(tokenCreditsExpiry) : null,
     admin: Boolean(selectedUser.admin),
     expiresAt: expiresAt ? Timestamp.fromDate(expiresAt) : null,
     updatedAt: serverTimestamp(),
