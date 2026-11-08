@@ -23,7 +23,7 @@ OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 CLIPDROP_CLEANUP_URL = 'https://clipdrop-api.co/cleanup/v1'
 FIREBASE_LOOKUP_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup'
 FIREBASE_CONFIG = ROOT / 'js' / 'firebase.js'
-USAGE_DB = ROOT / '.nexus_usage.sqlite3'
+USAGE_DB = Path(os.environ.get('NEXUS_USAGE_DB', str(ROOT / '.nexus_usage.sqlite3'))).expanduser()
 FREE_TOKEN_LIMIT = 500_000
 PLAN_TOKEN_LIMITS = {
     'Pro': 2_000_000,
@@ -103,6 +103,7 @@ def get_firebase_api_key():
 
 
 def initialize_usage_db():
+    USAGE_DB.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(USAGE_DB) as connection:
         connection.execute('''
             CREATE TABLE IF NOT EXISTS token_usage (
@@ -1471,7 +1472,11 @@ class AppHandler(SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     initialize_usage_db()
+
     port = int(os.environ.get('PORT', '8000'))
-    server = ThreadingHTTPServer(('127.0.0.1', port), AppHandler)
-    print(f'Nexus AI disponible en http://127.0.0.1:{port}')
+    host = '0.0.0.0'
+
+    server = ThreadingHTTPServer((host, port), AppHandler)
+
+    print(f'Nexus Forma disponible en puerto {port}')
     server.serve_forever()
