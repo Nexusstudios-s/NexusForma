@@ -963,6 +963,9 @@ function renderModelSettings() {
     providerInput.placeholder = 'proveedor/modelo:free';
     providerInput.value = model.providerModel || '';
     providerLabel.append(providerInput);
+    const providerHelp = document.createElement('small');
+    providerHelp.className = 'admin-model-help';
+    providerHelp.textContent = 'Este campo conecta un modelo de chat. No admite Fish Audio/TTS ni modelos de generación de imágenes.';
     const tierLabel = document.createElement('label');
     tierLabel.textContent = 'Nivel de acceso';
     const tierInput = document.createElement('select');
@@ -975,7 +978,7 @@ function renderModelSettings() {
     tierLabel.append(tierInput);
     const capabilityOptions = document.createElement('div');
     capabilityOptions.className = 'admin-model-capabilities';
-    for (const [field, textValue] of [['vision', 'Entrada de imágenes'], ['audio', 'Entrada de audio']]) {
+    for (const [field, textValue] of [['vision', 'Analiza imágenes en el chat'], ['audio', 'Analiza audio en el chat']]) {
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
@@ -994,7 +997,7 @@ function renderModelSettings() {
     tokenInput.dataset.modelField = 'tokenLimit'; tokenInput.value = String(model.tokenLimit || 0);
     tokenLabel.append(tokenInput);
     const imageLabel = document.createElement('label');
-    imageLabel.textContent = 'URL de imagen';
+    imageLabel.textContent = 'Foto o logo del modelo (solo visual)';
     const imageInput = document.createElement('input');
     imageInput.className = 'profile-name-input';
     imageInput.type = 'url';
@@ -1028,7 +1031,7 @@ function renderModelSettings() {
     enabledLabel.append(enabledInput, enabledText);
     content.append(heading);
     if (idLabel) content.append(idLabel);
-    content.append(nameLabel, providerLabel, tierLabel, capabilityOptions, tokenLabel, imageLabel, descriptionLabel, enabledLabel);
+    content.append(nameLabel, providerLabel, providerHelp, tierLabel, capabilityOptions, tokenLabel, imageLabel, descriptionLabel, enabledLabel);
     row.append(preview, content);
     container.append(row);
     const initialImage = safeHttpsUrl(model.imageUrl || '');
@@ -1047,7 +1050,7 @@ function readModelSettings() {
     const providerModel = get('providerModel').value.trim();
     if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(providerModel)) throw new Error(`Configura un ID de OpenRouter válido para ${id}.`);
     if (get('enabled').checked && (/^fish-audio\//i.test(providerModel) || /\/(?:tts|text-to-speech)(?:[-/:.]|$)/i.test(providerModel))) {
-      throw new Error(`${providerModel} es texto a voz y no puede usarse en el chat. Asígnale un modelo conversacional o desactívalo.`);
+      throw new Error(`${providerModel} es de voz, no de chat. En “Modelo conversacional” usa un ID de OpenRouter para chat; la foto del modelo solo es decorativa.`);
     }
     const tokenLimit = Number.parseInt(get('tokenLimit').value || '0', 10);
     if (!Number.isInteger(tokenLimit) || tokenLimit < 0 || tokenLimit > 10_000_000) throw new Error(`Límite de tokens no válido para ${id}.`);

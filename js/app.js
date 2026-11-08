@@ -1871,7 +1871,19 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       $$('.thumb').forEach(item => item.classList.toggle('active', item === thumb)); $('#generatedImage').src = thumb.dataset.image; $('#imageCaption').textContent = thumb.dataset.caption; $('#resultMeta').textContent = 'Imagen de inspiración · 1:1'; $('#imageStatus').textContent = 'Vista de inspiración';
     }));
     $('#shuffleGallery').addEventListener('click', () => { const thumbs = $$('.thumb'); thumbs.push(thumbs.shift()); thumbs.forEach(node => $('.thumbs').append(node)); });
-    $('#tryIdea').addEventListener('click', () => { prompt.value = 'Un pequeño café mediterráneo en una calle tranquila al amanecer'; prompt.dispatchEvent(new Event('input')); prompt.focus(); window.scrollTo({top: 0, behavior: 'smooth'}); });
+    function useImageIdea(text) {
+      prompt.value = text;
+      prompt.dispatchEvent(new Event('input'));
+      prompt.focus();
+      window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+    $$('[data-image-prompt]').forEach(button => button.addEventListener('click', () => useImageIdea(button.dataset.imagePrompt)));
+    $('#tryIdea').addEventListener('click', () => {
+      const ideas = $$('[data-image-prompt]');
+      if (!ideas.length) return;
+      const idea = ideas[Math.floor(Math.random() * ideas.length)];
+      useImageIdea(idea.dataset.imagePrompt);
+    });
     $('#newProject').addEventListener('click', () => { prompt.value = ''; prompt.dispatchEvent(new Event('input')); toast('Proyecto nuevo listo.'); });
 
     let sourceImage = null;
