@@ -2,7 +2,6 @@
 <html lang="es" data-theme="dark">
 <head>
   <meta charset="utf-8">
-  <div class="login-page-media" id="loginPageMedia" aria-hidden="true" hidden></div>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b0d13">
   <meta name="description" content="Nexus Forma: crea imágenes, edita fotos y videos y explora herramientas de inteligencia artificial en un solo estudio creativo.">
@@ -27,9 +26,31 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/theme.css">
   <link rel="stylesheet" href="css/login.css">
-  <link rel="stylesheet" href="css/fit.css">
+  <link rel="stylesheet" href="css/fit2.css">
+<style>
+
+  /* Aviso legal integrado en login · aislado del formulario de autenticación */
+  .nexus-access-disclosure {
+    margin-top: 20px; padding: 16px 17px 14px; border: 1px solid var(--stroke-2);
+    border-radius: 19px; background: linear-gradient(135deg, var(--accent-soft), transparent 70%), var(--glass);
+    box-shadow: inset 0 1px 0 var(--inner);
+  }
+  .nexus-access-disclosure-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+  .nexus-access-shield { width: 27px; height: 27px; flex: none; display: grid; place-items: center; border-radius: 9px; border: 1px solid var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
+  .nexus-access-shield svg { width: 16px; height: 16px; }
+  .nexus-access-disclosure-head strong { color: var(--text); font-size: 12px; letter-spacing: -.01em; }
+  .nexus-access-disclosure p { margin: 7px 0 0; color: var(--text-2); font-size: 11.5px; line-height: 1.55; text-wrap: pretty; }
+  .nexus-access-disclosure a { color: var(--accent-text); font-weight: 750; text-decoration: underline; text-decoration-color: var(--accent-line); text-underline-offset: 3px; transition: color .18s ease; }
+  .nexus-access-disclosure a:hover { color: var(--text); }
+  .nexus-access-disclosure a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+  .nexus-access-auth-note { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--stroke); color: var(--text-3); font-size: 10px; }
+  .nexus-access-auth-note span { color: var(--accent-text); }
+  @media (max-width: 760px) { .nexus-access-disclosure { margin-top: 15px; } }
+
+</style>
 </head>
 <body>
+  <div class="login-page-media" id="loginPageMedia" aria-hidden="true" hidden></div>
   <button class="icon-btn login-theme-toggle" id="loginThemeToggle" type="button" aria-label="Cambiar tema" title="Cambiar tema"><svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg><svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg></button>
 
   <main class="login-shell glass">
@@ -60,7 +81,13 @@
           <button class="btn primary submit" id="submitButton" type="submit">Iniciar sesión</button>
           <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
         </form>
-        <p class="legal">El acceso se gestiona de forma segura con Firebase Authentication.</p>
+        <section class="nexus-access-disclosure" aria-label="Términos de uso y privacidad">
+          <div class="nexus-access-disclosure-head"><span class="nexus-access-shield" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></span><strong>Tu información, con claridad</strong></div>
+          <p>Al continuar aceptás los <a href="terminos.html" target="_blank" rel="noopener noreferrer">Términos de uso <span aria-hidden="true">↗</span></a>.</p>
+          <p>Guardamos la información necesaria para tu cuenta, el historial y los límites del plan. Tus mensajes se procesan mediante Nexus AI y los proveedores de modelos utilizados por el servicio.</p>
+          <p>Te explicamos el tratamiento de los datos en la <a href="privacidad.html" target="_blank" rel="noopener noreferrer">Política de privacidad <span aria-hidden="true">↗</span></a>.</p>
+          <div class="nexus-access-auth-note"><span aria-hidden="true">✦</span> Acceso gestionado con Firebase Authentication</div>
+        </section>
       </div>
     </section>
   </main>
