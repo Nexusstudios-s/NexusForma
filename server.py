@@ -914,6 +914,33 @@ class AppHandler(SimpleHTTPRequestHandler):
             usage['model'] = model_name
             self.send_json(200, usage)
             return
+                # URLs limpias: /login en lugar de /login.html
+        clean_path = request_url.path
+
+        # Redirigir las URLs .html a sus versiones limpias
+        if clean_path.endswith('.html'):
+            if clean_path == '/index.html':
+                destination = '/'
+            else:
+                destination = clean_path[:-5]
+
+            if request_url.query:
+                destination += '?' + request_url.query
+
+            self.send_response(301)
+            self.send_header('Location', destination)
+            self.end_headers()
+            return
+
+        # Buscar automáticamente archivos HTML sin extensión
+        if clean_path != '/' and '.' not in clean_path.rsplit('/', 1)[-1]:
+            html_file = ROOT / (clean_path.lstrip('/') + '.html')
+
+            if html_file.is_file():
+                self.path = clean_path + '.html'
+                if request_url.query:
+                    self.path += '?' + request_url.query
+
         super().do_GET()
 
     def do_photo_cleanup(self):
