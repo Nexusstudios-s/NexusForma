@@ -987,7 +987,7 @@ function renderModelSettings() {
       idLabel.append(idInput);
     }
     const providerLabel = document.createElement('label');
-    providerLabel.textContent = 'Modelo conversacional de Nexus AI (no TTS)';
+    providerLabel.textContent = 'Modelo conversacional de OpenRouter (no TTS)';
     const providerInput = document.createElement('input');
     providerInput.className = 'profile-name-input';
     providerInput.dataset.modelField = 'providerModel';
@@ -1082,7 +1082,7 @@ function readModelSettings() {
     const providerModel = get('providerModel').value.trim();
     const enabled = get('enabled').checked;
     if (providerModel && !/^[A-Za-z0-9._-]+\/[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(providerModel)) throw new Error(`Configura un ID de OpenRouter válido para ${id}.`);
-    if (enabled && !providerModel) throw new Error(`Configura un modelo conversacional de Nexus AI para ${id} antes de activarlo.`);
+    if (enabled && !providerModel) throw new Error(`Configura un modelo conversacional de OpenRouter para ${id} antes de activarlo.`);
     const isTextToSpeech = /^fish-audio\//i.test(providerModel) || /\/(?:tts|text-to-speech)(?:[-/:.]|$)/i.test(providerModel);
     if (enabled && isTextToSpeech) disabledVoiceModels.push(id);
     const isEnabled = enabled && !isTextToSpeech;
@@ -2004,6 +2004,24 @@ function renderPaymentMethodDetails() {
   const instructions = document.createElement('p');
   instructions.textContent = method.instructions || 'Realiza el pago y adjunta el comprobante.';
   container.append(title, identifier, instructions);
+  const accountIdentifier = String(method.identifier || '').trim();
+  if (accountIdentifier) {
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'payment-copy-account';
+    copy.textContent = 'Copiar dato';
+    copy.setAttribute('aria-label', 'Copiar el dato de la cuenta de pago');
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(accountIdentifier);
+        copy.textContent = '¡Copiado!';
+        toast('Dato de pago copiado.');
+      } catch (_) {
+        toast('No se pudo copiar automáticamente. Selecciona el dato manualmente.');
+      }
+    });
+    container.append(copy);
+  }
 }
 
 function refreshPaymentMethodOptions() {
@@ -2084,6 +2102,23 @@ function openPurchaseDialog(title, summary) {
   $('#receiptFile').value = '';
   $('#receiptUrl').value = '';
   $('#paymentFeedback').textContent = '';
+  const dialog = $('#paymentDialog');
+  dialog.dataset.custom = String(isCustomRequest);
+  $('#paymentOrderPlan').textContent = currentPurchase.planName;
+  $('#paymentOrderAmount').textContent = currentPurchase.amount;
+  $('#paymentOrderDuration').textContent = isCustomRequest
+    ? 'Configuración a medida'
+    : currentPurchase.type === 'tokens'
+      ? `${Number(currentPurchase.tokenAmount || 0).toLocaleString('es-CO')} tokens adicionales`
+      : `Acceso por ${currentPurchase.durationDays} días`;
+  $('#paymentOrderStatus').textContent = isCustomRequest ? 'Precio por confirmar' : 'Pendiente de revisión';
+  $('#paymentBuyerHint').textContent = isCustomRequest
+    ? 'Datos de contacto para que el equipo responda tu solicitud.'
+    : 'Confirma quién realizó el pago para poder verificarlo.';
+  $('#paymentConfirmNote').textContent = isCustomRequest
+    ? 'Tu solicitud será evaluada. No se realizará ningún cobro al enviarla.'
+    : 'El acceso o los tokens se activan únicamente tras la aprobación del pago.';
+  paymentResetReceiptPreview();
   if (isCustomRequest) {
     $('#customPlanDuration').value = String(currentPurchase.durationDays || 30);
     $('#customPlanTokens').value = String(currentPurchase.monthlyTokens || 500000);
@@ -2178,6 +2213,67 @@ function compressReceipt(file) {
     image.src = objectUrl;
   });
 }
+
+// Vista previa local: no sube ni transmite el archivo hasta enviar el formulario.
+let paymentPreviewObjectUrl = '';
+function paymentResetReceiptPreview() {
+  if (paymentPreviewObjectUrl) URL.revokeObjectURL(paymentPreviewObjectUrl);
+  paymentPreviewObjectUrl = '';
+  const preview = $('#paymentUploadPreview');
+  if (preview) preview.hidden = true;
+  const image = $('#paymentPreviewImage');
+  if (image) image.removeAttribute('src');
+  const zone = $('#paymentUploadZone');
+  if (zone) zone.classList.remove('is-dragging');
+}
+function paymentUpdateReceiptPreview() {
+  paymentResetReceiptPreview();
+  const file = $('#receiptFile').files?.[0];
+  if (!file) return;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 12 * 1024 * 1024) {
+    $('#paymentFeedback').textContent = 'Usa JPG, PNG o WebP de hasta 12 MB.';
+    $('#receiptFile').value = '';
+    return;
+  }
+  $('#receiptUrl').value = '';
+  $('#paymentFeedback').textContent = '';
+  paymentPreviewObjectUrl = URL.createObjectURL(file);
+  $('#paymentPreviewImage').src = paymentPreviewObjectUrl;
+  $('#paymentPreviewName').textContent = file.name;
+  $('#paymentPreviewSize').textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · imagen seleccionada`;
+  $('#paymentUploadPreview').hidden = false;
+}
+$('#receiptFile').addEventListener('change', paymentUpdateReceiptPreview);
+$('#paymentRemoveFile').addEventListener('click', () => {
+  $('#receiptFile').value = '';
+  paymentResetReceiptPreview();
+});
+$('#receiptUrl').addEventListener('input', () => {
+  if (!$('#receiptUrl').value.trim()) return;
+  if ($('#receiptFile').files?.length) {
+    $('#receiptFile').value = '';
+    paymentResetReceiptPreview();
+  }
+});
+const paymentUploadZone = $('#paymentUploadZone');
+['dragenter', 'dragover'].forEach(name => paymentUploadZone.addEventListener(name, event => {
+  event.preventDefault();
+  if (!$('#paymentDialog').open) return;
+  paymentUploadZone.classList.add('is-dragging');
+}));
+['dragleave', 'drop'].forEach(name => paymentUploadZone.addEventListener(name, event => {
+  event.preventDefault();
+  paymentUploadZone.classList.remove('is-dragging');
+}));
+paymentUploadZone.addEventListener('drop', event => {
+  if (!$('#paymentDialog').open || !event.dataTransfer?.files?.length) return;
+  const transfer = new DataTransfer();
+  transfer.items.add(event.dataTransfer.files[0]);
+  $('#receiptFile').files = transfer.files;
+  paymentUpdateReceiptPreview();
+});
+$('#cancelPayment').addEventListener('click', () => $('#paymentDialog').close());
+$('#paymentDialog').addEventListener('close', paymentResetReceiptPreview);
 
 $('#paymentMethod').addEventListener('change', renderPaymentMethodDetails);
 $('#closePayment').addEventListener('click', () => $('#paymentDialog').close());
