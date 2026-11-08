@@ -1,6 +1,7 @@
 import base64
 import binascii
 import hashlib
+import io
 import json
 import os
 import re
@@ -8,12 +9,13 @@ import secrets
 import sqlite3
 import time
 import uuid
+import zipfile
 from email.parser import BytesParser
 from email.policy import default as email_policy
 from datetime import date, datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -63,8 +65,11 @@ MODEL_DEFAULT_TIERS = {
 SYSTEM_PROMPT = (
     'Eres Nexus, un asistente creativo util y claro. Responde en espanol salvo que '
     'el usuario pida otro idioma. Da respuestas directas y estructuradas. No reveles '
-    'razonamiento interno privado; ofrece una explicacion breve de conclusiones o pasos cuando ayude y si'
-    'te preguntan quien te creo o quien es tu creador di = Nexus Studios. Cuando te pregunten por tus modelos '
+    'razonamiento interno privado; ofrece una explicacion breve de conclusiones o pasos cuando ayude. '
+    'Cuando te pidan un enlace, incluye una URL HTTPS completa en formato Markdown si puedes confirmarla; no inventes direcciones. '
+    'Si te piden crear archivos o un proyecto, responde con un bloque de código por archivo y escribe su ruta en el encabezado, '
+    'por ejemplo html path="index.html"; no mezcles varios archivos en un mismo bloque. '
+    'Si te preguntan quien te creo o quien es tu creador, di = Nexus Studios. Cuando te pregunten por tus modelos '
     'responde con los modelos disponibles y menciona el modelo actual de la sesion. Cuando te pregunten por tokens '
     'o consumo, indica la cuota actual, el uso total y el modelo activo.'
 )
@@ -89,6 +94,13 @@ def build_chat_system_prompt(agent_name='', agent_instructions='', explain_steps
 
 
 MAX_BODY_BYTES = 16 * 1024 * 1024
+MAX_ARCHIVE_REQUEST_BYTES = 6 * 1024 * 1024
+MAX_ARCHIVE_CONTENT_BYTES = 4 * 1024 * 1024
+MAX_ARCHIVE_FILES = 30
+PREMIUM_AGENT_PRESET_IDS = {'brand-strategist', 'content-planner', 'data-analyst'}
+FREE_IMAGE_LIMIT = 10
+FREE_IMAGE_WINDOW_SECONDS = 24 * 60 * 60
+MAX_GENERATED_IMAGE_BYTES = 12 * 1024 * 1024
 MIN_REQUEST_INTERVAL = 2
 last_request_by_ip = {}
 
@@ -142,6 +154,14 @@ def initialize_usage_db():
                 reserved_until REAL NOT NULL DEFAULT 0
             )
         ''')
+        connection.execute('''
+            CREATE TABLE IF NOT EXISTS free_image_generations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                generated_at REAL NOT NULL
+            )
+        ''')
+        connection.execute('CREATE INDEX IF NOT EXISTS free_image_generations_user_time ON free_image_generations (user_id, generated_at)')
         connection.execute('''
             CREATE TABLE IF NOT EXISTS developer_api_keys (
                 key_id TEXT PRIMARY KEY,
@@ -332,6 +352,50 @@ def parse_expiry(profile):
         return None
 
 
+def is_free_plan(profile, now=None):
+    profile = profile if isinstance(profile, dict) else {}
+    expiry = parse_expiry(profile)
+    if expiry and expiry <= (now or datetime.now(timezone.utc)):
+        return True
+    plan_id = profile.get('planId')
+    if plan_id:
+        return plan_id == 'free'
+    return profile.get('plan') not in ('Pro', 'Estudio', 'Premium', 'Alquiler')
+
+
+def reserve_free_image_generation(user_id):
+    now = time.time()
+    cutoff = now - FREE_IMAGE_WINDOW_SECONDS
+    with sqlite3.connect(USAGE_DB, timeout=10) as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        connection.execute('DELETE FROM free_image_generations WHERE generated_at <= ?', (cutoff,))
+        count, oldest = connection.execute(
+            'SELECT COUNT(*), MIN(generated_at) FROM free_image_generations WHERE user_id = ?',
+            (user_id,),
+        ).fetchone()
+        if count >= FREE_IMAGE_LIMIT:
+            connection.rollback()
+            retry_after = max(1, int(oldest + FREE_IMAGE_WINDOW_SECONDS - now + 0.999))
+            return None, 0, retry_after
+        cursor = connection.execute(
+            'INSERT INTO free_image_generations (user_id, generated_at) VALUES (?, ?)',
+            (user_id, now),
+        )
+        oldest = oldest if oldest is not None else now
+        remaining = FREE_IMAGE_LIMIT - count - 1
+        retry_after = max(1, int(oldest + FREE_IMAGE_WINDOW_SECONDS - now + 0.999))
+        connection.commit()
+        return cursor.lastrowid, remaining, retry_after
+
+
+def release_free_image_generation(generation_id):
+    if generation_id is None:
+        return
+    with sqlite3.connect(USAGE_DB, timeout=10) as connection:
+        connection.execute('DELETE FROM free_image_generations WHERE id = ?', (generation_id,))
+        connection.commit()
+
+
 def photo_cleanup_entitlement(profile):
     profile = profile if isinstance(profile, dict) else {}
     expiry = parse_expiry(profile)
@@ -419,6 +483,9 @@ def has_plan_feature(app_config, profile, feature):
     expiry = parse_expiry(profile)
     if expiry and expiry <= datetime.now(timezone.utc):
         plan_id = 'free'
+    if isinstance(plan_id, str) and plan_id.startswith('custom-'):
+        custom_features = profile.get('customFeatures') if isinstance(profile, dict) else None
+        return isinstance(custom_features, list) and feature in custom_features
     plan = next((item for item in plans or [] if isinstance(item, dict) and item.get('id') == plan_id), None)
     features = plan.get('features') if isinstance(plan, dict) else None
     return not isinstance(features, list) or feature in features
@@ -943,6 +1010,170 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         super().do_GET()
 
+    def do_create_archive(self):
+        user_id = self.authenticated_user_id()
+        if not user_id:
+            self.send_json(401, {'error': 'Inicia sesión para descargar el ZIP.'})
+            return
+        id_token = self.headers.get('Authorization', '')[7:].strip()
+        profile = read_firestore_user_profile(user_id, id_token) or {}
+        if is_free_plan(profile):
+            self.send_json(403, {'error': 'La descarga de proyectos ZIP requiere un plan de pago.'})
+            return
+        if not self.headers.get('Content-Type', '').lower().startswith('application/json'):
+            self.send_json(415, {'error': 'La solicitud del ZIP debe ser JSON.'})
+            return
+        try:
+            body_size = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            self.send_json(400, {'error': 'La solicitud del ZIP no es válida.'})
+            return
+        if body_size <= 0 or body_size > MAX_ARCHIVE_REQUEST_BYTES:
+            self.send_json(413, {'error': 'El proyecto supera el tamaño permitido para crear un ZIP.'})
+            return
+        try:
+            payload = json.loads(self.rfile.read(body_size))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self.send_json(400, {'error': 'No se pudo leer la lista de archivos.'})
+            return
+        files = payload.get('files') if isinstance(payload, dict) else None
+        if not isinstance(files, list) or not 1 <= len(files) <= MAX_ARCHIVE_FILES:
+            self.send_json(400, {'error': f'El ZIP debe contener entre 1 y {MAX_ARCHIVE_FILES} archivos.'})
+            return
+
+        archive_files = []
+        total_bytes = 0
+        seen_names = set()
+        for item in files:
+            if not isinstance(item, dict) or not isinstance(item.get('name'), str) or not isinstance(item.get('content'), str):
+                self.send_json(400, {'error': 'Cada archivo debe incluir nombre y contenido de texto.'})
+                return
+            name = item['name'].replace('\\', '/')
+            parts = name.split('/')
+            if (
+                not name or len(name) > 240 or name.startswith('/')
+                or re.match(r'^[A-Za-z]:', name)
+                or any(part in ('', '.', '..') for part in parts)
+                or any(ord(character) < 32 for character in name)
+            ):
+                self.send_json(400, {'error': 'Una ruta de archivo no es válida.'})
+                return
+            normalized_name = name.casefold()
+            if normalized_name in seen_names:
+                self.send_json(400, {'error': f'La ruta {name} está repetida.'})
+                return
+            seen_names.add(normalized_name)
+            try:
+                content = item['content'].encode('utf-8')
+            except UnicodeEncodeError:
+                self.send_json(400, {'error': f'El contenido de {name} no es texto UTF-8 válido.'})
+                return
+            total_bytes += len(content)
+            if total_bytes > MAX_ARCHIVE_CONTENT_BYTES:
+                self.send_json(413, {'error': 'El contenido total del ZIP supera 4 MB.'})
+                return
+            archive_files.append((name, content))
+
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for name, content in archive_files:
+                archive.writestr(name, content)
+        body = archive_buffer.getvalue()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/zip')
+        self.send_header('Content-Disposition', 'attachment; filename="nexus-proyecto.zip"')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_generate_image(self):
+        user_id = self.authenticated_user_id()
+        if not user_id:
+            self.send_json(401, {'error': 'Inicia sesión para generar imágenes.'})
+            return
+        id_token = self.headers.get('Authorization', '')[7:].strip()
+        profile = read_firestore_user_profile(user_id, id_token) or {}
+        if not self.headers.get('Content-Type', '').lower().startswith('application/json'):
+            self.send_json(415, {'error': 'La solicitud de imagen debe ser JSON.'})
+            return
+        try:
+            body_size = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            self.send_json(400, {'error': 'La solicitud de imagen no es válida.'})
+            return
+        if body_size <= 0 or body_size > 16_384:
+            self.send_json(413, {'error': 'La descripción supera el tamaño permitido.'})
+            return
+        try:
+            payload = json.loads(self.rfile.read(body_size))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self.send_json(400, {'error': 'No se pudo leer la descripción de la imagen.'})
+            return
+        prompt = payload.get('prompt') if isinstance(payload, dict) else None
+        width = payload.get('width') if isinstance(payload, dict) else None
+        height = payload.get('height') if isinstance(payload, dict) else None
+        seed = payload.get('seed') if isinstance(payload, dict) else None
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 2400:
+            self.send_json(400, {'error': 'Escribe una descripción de imagen válida.'})
+            return
+        if (width, height) not in ((768, 768), (768, 576), (576, 768)):
+            self.send_json(400, {'error': 'La proporción de imagen no es válida.'})
+            return
+        if not isinstance(seed, int) or isinstance(seed, bool) or not 0 <= seed < 1_000_000:
+            self.send_json(400, {'error': 'La semilla de imagen no es válida.'})
+            return
+
+        free_plan = is_free_plan(profile)
+        generation_id = None
+        quota_remaining = None
+        retry_after = 0
+        if free_plan:
+            generation_id, quota_remaining, retry_after = reserve_free_image_generation(user_id)
+            if generation_id is None:
+                self.send_json(429, {
+                    'error': 'Alcanzaste el límite de 10 imágenes cada 24 horas de tu plan Gratis.',
+                    'limit': FREE_IMAGE_LIMIT,
+                    'remaining': 0,
+                    'retryAfterSeconds': retry_after,
+                })
+                return
+
+        upstream_url = (
+            f'https://image.pollinations.ai/prompt/{quote(prompt.strip(), safe="")}?'
+            f'{urlencode({"width": width, "height": height, "seed": seed, "safe": "true"})}'
+        )
+        upstream = Request(upstream_url, headers={'Accept': 'image/*', 'User-Agent': 'Nexus Forma/1.0'})
+        try:
+            with urlopen(upstream, timeout=90) as response:
+                content_type = response.headers.get('Content-Type', '').split(';', 1)[0].lower()
+                image_data = response.read(MAX_GENERATED_IMAGE_BYTES + 1)
+            if content_type not in ('image/jpeg', 'image/png', 'image/webp') or len(image_data) > MAX_GENERATED_IMAGE_BYTES:
+                release_free_image_generation(generation_id)
+                self.send_json(502, {'error': 'El proveedor devolvió una imagen no válida o demasiado grande.'})
+                return
+        except HTTPError as error:
+            release_free_image_generation(generation_id)
+            status = 503 if error.code == 429 else 502
+            self.send_json(status, {'error': 'El proveedor de imágenes está ocupado. Inténtalo más tarde.'})
+            return
+        except (TimeoutError, URLError, OSError, ValueError):
+            release_free_image_generation(generation_id)
+            self.send_json(502, {'error': 'No se pudo conectar con el proveedor de imágenes.'})
+            return
+
+        self.send_response(200)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(image_data)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        if free_plan:
+            self.send_header('X-Image-Quota-Remaining', str(quota_remaining))
+            self.send_header('X-Image-Retry-After', str(retry_after))
+        self.end_headers()
+        self.wfile.write(image_data)
+
     def do_photo_cleanup(self):
         api_key = os.environ.get('CLIPDROP_API_KEY', '').strip()
         if not api_key:
@@ -1201,6 +1432,12 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         request_path = urlsplit(self.path).path
+        if request_path == '/api/images/generate':
+            self.do_generate_image()
+            return
+        if request_path == '/api/files/zip':
+            self.do_create_archive()
+            return
         if request_path == '/api/developer/keys':
             self.create_developer_api_key()
             return
@@ -1248,6 +1485,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         messages = payload.get('messages') if isinstance(payload, dict) else None
         agent_name = payload.get('agentName', '') if isinstance(payload, dict) else ''
         agent_instructions = payload.get('agentInstructions', '') if isinstance(payload, dict) else ''
+        agent_preset_id = payload.get('agentPresetId', '') if isinstance(payload, dict) else ''
         conversation_id = payload.get('conversationId', '') if isinstance(payload, dict) else ''
         raw_images = payload.get('images', []) if isinstance(payload, dict) else []
         raw_audio = payload.get('audio') if isinstance(payload, dict) else None
@@ -1258,6 +1496,12 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         if not isinstance(agent_instructions, str) or len(agent_instructions) > 1800:
             self.send_json(400, {'error': 'Las instrucciones del mini agente no pueden superar 1800 caracteres.'})
+            return
+        if not isinstance(agent_preset_id, str) or len(agent_preset_id) > 64:
+            self.send_json(400, {'error': 'El identificador del agente predefinido no es válido.'})
+            return
+        if agent_preset_id in PREMIUM_AGENT_PRESET_IDS and api_plus_plan_id(profile) != 'premium':
+            self.send_json(403, {'error': 'Este agente predefinido está disponible solo con el plan Premium.'})
             return
         if not isinstance(conversation_id, str) or not re.fullmatch(r'[A-Za-z0-9._:-]{1,120}', conversation_id):
             conversation_id = str(uuid.uuid4())
