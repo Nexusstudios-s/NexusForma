@@ -192,3 +192,6 @@
 .sidebar-toggle {
   flex-shrink: 0;
 }
+@media (max-width: 760px) {
+  .sidebar .brand { display: none; }
+}
