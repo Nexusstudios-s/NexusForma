@@ -1,0 +1,333 @@
+/* ==========================================================================
+   forma · theme.css
+   Sistema de diseño: tokens (oscuro por defecto + claro), fondo, liquid glass
+   y componentes compartidos entre la app y el login.
+   Para cambiar la identidad de color basta con editar las variables de :root.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  --font-ui: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Instrument Sans', system-ui, sans-serif;
+
+  /* superficie y texto */
+  --bg: #0b0d13;
+  --text: #f1f2f7;
+  --text-2: #b6bbcb;
+  --text-3: #8d94a8;
+
+  /* cristal */
+  --glass: rgba(255, 255, 255, .055);
+  --glass-2: rgba(255, 255, 255, .095);
+  --glass-3: rgba(255, 255, 255, .16);
+  --glass-solid: rgba(20, 23, 34, .78);
+  --input: rgba(6, 8, 14, .42);
+  --stroke: rgba(255, 255, 255, .10);
+  --stroke-2: rgba(255, 255, 255, .18);
+  --inner: rgba(255, 255, 255, .10);
+  --spec: rgba(255, 255, 255, .55);
+  --spec-2: rgba(255, 255, 255, .22);
+
+  /* acento: ámbar-coral, con rosa y turquesa como apoyo */
+  --accent: #ff9d66;
+  --accent-2: #ff6f91;
+  --accent-text: #ffb48c;
+  --accent-soft: rgba(255, 157, 102, .15);
+  --accent-line: rgba(255, 157, 102, .55);
+  --cool: #59d5c6;
+  --ok: #6ee7a8;
+  --danger: #ff9990;
+
+  /* botón principal */
+  --primary-bg: linear-gradient(180deg, #ffffff 0%, #f4e9e1 100%);
+  --primary-ink: #17110d;
+  --primary-glow: 0 12px 34px -10px rgba(255, 157, 102, .6);
+
+  /* luces del fondo */
+  --blob-1: rgba(255, 112, 80, .34);
+  --blob-2: rgba(222, 62, 122, .28);
+  --blob-3: rgba(52, 190, 208, .24);
+  --grain-opacity: .08;
+
+  --dialog-bg: rgba(20, 23, 34, .88);
+  --scrim: rgba(5, 7, 12, .58);
+
+  --shadow-md: 0 14px 36px -14px rgba(0, 0, 0, .55);
+  --shadow-lg: 0 40px 100px -30px rgba(0, 0, 0, .7);
+  --blur: 28px;
+
+  --radius-xl: 30px;
+  --radius-lg: 24px;
+  --radius-md: 18px;
+  --radius-sm: 12px;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #eceef4;
+  --text: #14161f;
+  --text-2: #484e62;
+  --text-3: #697087;
+
+  --glass: rgba(255, 255, 255, .55);
+  --glass-2: rgba(255, 255, 255, .75);
+  --glass-3: rgba(255, 255, 255, .95);
+  --glass-solid: rgba(255, 255, 255, .86);
+  --input: rgba(255, 255, 255, .72);
+  --stroke: rgba(22, 26, 44, .09);
+  --stroke-2: rgba(22, 26, 44, .17);
+  --inner: rgba(255, 255, 255, .9);
+  --spec: rgba(255, 255, 255, 1);
+  --spec-2: rgba(255, 255, 255, .7);
+
+  --accent: #ee6a2b;
+  --accent-2: #d93f74;
+  --accent-text: #b5461a;
+  --accent-soft: rgba(238, 106, 43, .12);
+  --accent-line: rgba(238, 106, 43, .5);
+  --cool: #11968d;
+  --ok: #0d8f5a;
+  --danger: #c0382e;
+
+  --primary-bg: linear-gradient(180deg, #2a2f42 0%, #14161f 100%);
+  --primary-ink: #ffffff;
+  --primary-glow: 0 14px 30px -12px rgba(20, 22, 31, .55);
+
+  --blob-1: rgba(255, 150, 100, .55);
+  --blob-2: rgba(240, 110, 165, .40);
+  --blob-3: rgba(90, 200, 220, .48);
+  --grain-opacity: .05;
+
+  --dialog-bg: rgba(255, 255, 255, .92);
+  --scrim: rgba(20, 24, 40, .35);
+
+  --shadow-md: 0 14px 34px -16px rgba(40, 50, 90, .3);
+  --shadow-lg: 0 40px 90px -34px rgba(40, 50, 90, .35);
+}
+
+/* ---------- base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  font: 400 14px/1.5 var(--font-ui);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+}
+
+h1, h2, h3, p { margin: 0; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
+
+::selection { background: var(--accent-soft); color: var(--text); }
+
+/* ---------- fondo vivo: luces suaves + grano fotográfico ---------- */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 34% at 18% 22%, var(--blob-1), transparent 70%),
+    radial-gradient(34% 32% at 82% 14%, var(--blob-3), transparent 70%),
+    radial-gradient(40% 36% at 72% 90%, var(--blob-2), transparent 70%),
+    radial-gradient(30% 30% at 6% 88%, var(--blob-3), transparent 70%);
+  animation: drift 52s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes drift {
+  to { transform: translate3d(3%, -2%, 0) rotate(4deg) scale(1.07); }
+}
+
+/* ---------- liquid glass ---------- */
+.glass, .panel {
+  position: relative;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.55);
+  backdrop-filter: blur(var(--blur)) saturate(1.55);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md), inset 0 1px 0 var(--inner);
+}
+
+/* borde especular: la luz cae en una esquina y se apaga en el resto */
+.glass::before, .panel::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: .75;
+  background: linear-gradient(135deg, var(--spec) 0%, transparent 28%, transparent 68%, var(--spec-2) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* ---------- botones ---------- */
+.btn {
+  height: 44px;
+  padding: 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid var(--stroke-2);
+  border-radius: 999px;
+  background: var(--glass-2);
+  color: var(--text);
+  font: 600 14px/1 var(--font-ui);
+  white-space: nowrap;
+  transition: background .2s, border-color .2s, transform .15s, box-shadow .2s;
+}
+.btn:hover { background: var(--glass-3); }
+.btn:active { transform: scale(.98); }
+.btn svg { width: 17px; height: 17px; flex: none; }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.btn.primary {
+  border-color: transparent;
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+  box-shadow: var(--primary-glow), inset 0 1px 0 rgba(255, 255, 255, .45);
+}
+.btn.primary:hover { filter: brightness(1.06); background: var(--primary-bg); }
+
+.icon-btn {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid var(--stroke);
+  border-radius: 50%;
+  background: var(--glass);
+  color: var(--text-2);
+  transition: background .2s, color .2s;
+}
+.icon-btn:hover { background: var(--glass-2); color: var(--text); }
+.icon-btn svg { width: 19px; height: 19px; }
+
+button svg, .api-note svg, .upload-box svg, .video-placeholder svg, .chat-sparkle svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* el icono del tema cambia según el modo: sol en oscuro, luna en claro */
+.theme-toggle .i-moon, .login-theme-toggle .i-moon { display: none; }
+html[data-theme="light"] .theme-toggle .i-sun,
+html[data-theme="light"] .login-theme-toggle .i-sun { display: none; }
+html[data-theme="light"] .theme-toggle .i-moon,
+html[data-theme="light"] .login-theme-toggle .i-moon { display: block; }
+
+/* ---------- avatar ---------- */
+.avatar {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(140deg, var(--accent), var(--accent-2));
+  background-size: cover;
+  background-position: center;
+  color: #1b0e09;
+  font: 700 13.5px/1 var(--font-ui);
+  box-shadow: 0 0 0 2px var(--glass-3);
+}
+.avatar.has-photo { color: transparent; }
+.avatar.small { width: 38px; height: 38px; }
+
+/* ---------- controles de formulario compartidos ---------- */
+.prompt, .select-wrap select, .time-inputs input, .profile-name-input, .field input {
+  width: 100%;
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  background: var(--input);
+  color: var(--text);
+  transition: border-color .2s, box-shadow .2s;
+}
+.prompt:focus, .select-wrap select:focus, .time-inputs input:focus,
+.profile-name-input:focus, .field input:focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+::placeholder { color: var(--text-3); opacity: 1; }
+
+/* ---------- aviso ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 100;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 13px 20px;
+  border: 1px solid var(--stroke-2);
+  border-radius: 999px;
+  background: var(--glass-solid);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  opacity: 0;
+  transform: translate(-50%, 16px);
+  pointer-events: none;
+  transition: opacity .25s, transform .25s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- scroll ---------- */
+* { scrollbar-width: thin; scrollbar-color: var(--stroke-2) transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
+  *, *::before, *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* desplegables nativos: que sigan el tema */
+html[data-theme="light"] .select-wrap select option,
+html[data-theme="light"] .chat-model select option { background: #ffffff; color: #14161f; }

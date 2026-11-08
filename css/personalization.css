@@ -1,0 +1,82 @@
+/* Personalizacion del panel admin y capas visuales globales. */
+body { isolation: isolate; }
+.shell { position: relative; z-index: 1; }
+
+.site-background-media,
+.site-season-overlay,
+.site-decoration-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.site-background-media { z-index: 0; overflow: hidden; background-position: center; background-size: cover; filter: brightness(.34) saturate(.78); }
+.site-background-media.is-video iframe,
+.site-background-media.is-video video { width: 100%; height: 100%; display: block; border: 0; object-fit: cover; }
+.site-season-overlay { z-index: 2; overflow: hidden; }
+.site-season-overlay .particle {
+  position: absolute;
+  top: -8vh;
+  left: var(--left);
+  color: rgba(255, 255, 255, .86);
+  font-size: var(--size);
+  line-height: 1;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .35);
+  animation: personalization-fall var(--duration) linear var(--delay) infinite;
+}
+.site-season-overlay.halloween .particle { color: #ff9a54; text-shadow: 0 2px 14px rgba(255, 99, 35, .45); }
+.site-decoration-layer { z-index: 3; overflow: hidden; }
+.site-decoration-item { position: absolute; width: clamp(56px, 9vw, 128px); height: clamp(56px, 9vw, 128px); opacity: .9; }
+.site-decoration-item img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .32)); }
+@keyframes personalization-fall { to { transform: translate3d(5vw, 112vh, 0) rotate(360deg); } }
+
+.admin-customization-view { padding: 20px 24px 24px; }
+.admin-customization-view > .admin-section-head { margin-bottom: 16px; }
+.admin-customization-panel { display: grid; gap: 20px; }
+.admin-customization-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.admin-customization-field { min-width: 0; display: grid; align-content: start; gap: 7px; color: var(--text-2); font-size: 12px; font-weight: 600; }
+.admin-customization-field input,
+.admin-customization-field select,
+.admin-decoration-adder input {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  background: var(--input);
+  color: var(--text);
+  font-size: 12px;
+}
+.admin-customization-field select { appearance: auto; }
+.admin-customization-field input[type="file"] { height: auto; min-height: 42px; padding: 8px; border-style: dashed; }
+.admin-customization-section-title { grid-column: 1 / -1; display: grid; gap: 4px; padding-top: 16px; border-top: 1px solid var(--stroke); }
+.admin-customization-section-title strong { color: var(--text); font: 700 15px/1.2 var(--font-display); }
+.admin-customization-section-title small, .admin-customization-upload-status { color: var(--text-3); font-size: 11px; line-height: 1.5; }
+.admin-customization-upload-status { grid-column: 1 / -1; margin-top: -6px; }
+.admin-customization-decorations { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--stroke); }
+.admin-customization-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-customization-head h4 { margin: 0; color: var(--text); font: 700 15px/1.2 var(--font-display); }
+.admin-decoration-adder { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.admin-decoration-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 9px; }
+.admin-decoration-placeholder { grid-column: 1 / -1; padding: 18px; border: 1px dashed var(--stroke-2); border-radius: 12px; color: var(--text-3); font-size: 12px; text-align: center; }
+.admin-decoration-item { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px; border: 1px solid var(--stroke); border-radius: 12px; background: var(--glass); cursor: grab; }
+.admin-decoration-item:active { cursor: grabbing; }
+.admin-decoration-item img { width: 48px; height: 48px; flex: none; border: 1px solid var(--stroke); border-radius: 9px; background: var(--glass-2); object-fit: cover; }
+.admin-decoration-item > div { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.admin-decoration-item strong { overflow: hidden; color: var(--text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.admin-decoration-item small,
+.admin-decoration-item span { color: var(--text-3); font-size: 10px; }
+.admin-decoration-remove { width: 28px; height: 28px; flex: none; border: 1px solid var(--stroke); border-radius: 8px; background: transparent; color: var(--text-3); font-size: 18px; line-height: 1; }
+.admin-decoration-remove:hover { border-color: rgba(255, 120, 120, .35); background: rgba(255, 100, 110, .12); color: var(--danger); }
+
+@media (max-width: 760px) {
+  .admin-customization-view { padding: 16px; }
+  .admin-customization-grid { grid-template-columns: 1fr; }
+  .admin-customization-head { align-items: flex-start; }
+  .admin-decoration-list { grid-template-columns: 1fr; }
+  .admin-decoration-adder { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-season-overlay .particle { animation-duration: 30s; }
+}
