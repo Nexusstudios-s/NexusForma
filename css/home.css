@@ -1,7 +1,7 @@
 .view.home-view.active { display: grid; gap: 36px; }
 .home-hero {
   position: relative;
-  min-height: 390px;
+  min-height: 360px;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -23,10 +23,26 @@
 .home-hero-content > p { max-width: 570px; margin-top: 16px; color: rgba(255, 255, 255, .86); font-size: 16px; line-height: 1.6; }
 .home-hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 24px; }
 .home-hero-actions .btn { min-height: 46px; }
+.home-hero-actions .home-secondary-action { border-color: rgba(255, 255, 255, .36); background: rgba(12, 16, 20, .38); color: #fff; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.home-hero-actions .home-secondary-action:hover { border-color: rgba(255, 255, 255, .62); background: rgba(12, 16, 20, .58); }
+.home-hero-actions .home-secondary-action svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .home-hero-actions > span { color: rgba(255, 255, 255, .72); font-size: 12px; }
 .home-trust-list { display: flex; flex-wrap: wrap; gap: 9px 22px; margin: 24px 0 0; padding: 0; list-style: none; }
 .home-trust-list li { display: flex; align-items: center; gap: 7px; color: rgba(255, 255, 255, .82); font-size: 12px; }
 .home-trust-list li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #9bd6c2; }
+
+.home-resume { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: center; gap: 22px; padding: 18px 0; border-top: 1px solid var(--stroke); border-bottom: 1px solid var(--stroke); }
+.home-resume-copy h2 { margin-top: 5px; font: 700 21px/1.2 var(--font-display); }
+.home-resume-copy p { margin-top: 6px; color: var(--text-3); font-size: 12px; line-height: 1.5; }
+.home-resume-button { min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr) 20px; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--stroke); border-radius: 12px; background: var(--glass); color: var(--text); text-align: left; transition: background .18s, border-color .18s, transform .18s; }
+.home-resume-button:hover { transform: translateY(-1px); border-color: var(--accent-line); background: var(--glass-2); }
+.home-resume-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.home-resume-icon { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--accent-line); border-radius: 11px; background: var(--accent-soft); color: var(--accent-text); }
+.home-resume-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.home-resume-session { min-width: 0; display: grid; gap: 4px; }
+.home-resume-session strong { overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.home-resume-session small { overflow: hidden; color: var(--text-3); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.home-resume-arrow { color: var(--accent-text); font-size: 17px; }
 
 .home-section { display: grid; gap: 16px; }
 .home-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; }
@@ -105,6 +121,8 @@
   .home-hero { min-height: 400px; padding: 30px 22px; border-radius: 22px; }
   .home-hero h1 { font-size: 40px; }
   .home-hero-content > p { font-size: 14px; }
+  .home-resume { grid-template-columns: 1fr; gap: 12px; padding: 15px 0; }
+  .home-resume-copy h2 { font-size: 19px; }
   .home-section-heading { align-items: flex-start; flex-direction: column; gap: 6px; }
   .home-section-heading h2 { font-size: 22px; }
   .home-example-grid { grid-template-columns: 1fr; gap: 8px; }
@@ -153,4 +171,24 @@
   .community-card { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: stretch; }
   .community-art { width: 128px; height: 128px; min-height: 128px; aspect-ratio: 1; flex: none; padding: 8px; border-right: 1px solid var(--stroke); border-bottom: 0; }
   .community-card-copy { min-height: 0; align-content: center; padding: 12px; }
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 19px;
+  letter-spacing: -0.5px;
+}
+
+.sidebar-toggle {
+  flex-shrink: 0;
 }
