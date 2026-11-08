@@ -134,6 +134,18 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       return ['pro', 'premium'].includes(activePlanId(profile));
     }
 
+    // Editar mensajes, detener la respuesta y adjuntar archivos: solo Pro y Premium.
+    function hasChatProTools(profile = activeUserProfile) {
+      return ['pro', 'premium'].includes(activePlanId(profile));
+    }
+
+    function requireChatProTools(featureLabel) {
+      if (hasChatProTools()) return true;
+      toast(`${featureLabel} está disponible solo en los planes Pro y Premium.`);
+      setActiveView('plans');
+      return false;
+    }
+
     function hasPremiumEditorAccess(profile = activeUserProfile) {
       return ['pro', 'premium'].includes(activePlanId(profile));
     }
@@ -306,6 +318,14 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     const chatForm = $('#chatForm');
     const chatInput = $('#chatInput');
     const chatSend = $('#chatSend');
+    const chatEffortTrigger = $('#chatEffortTrigger');
+    const chatEffortMenu = $('#chatEffortMenu');
+    const CHAT_EFFORT_NAMES = {auto: 'Auto', low: 'Bajo', medium: 'Medio', high: 'Alto'};
+    let selectedReasoningEffort = 'auto';
+    try {
+      const previousEffort = localStorage.getItem('nexus-chat-reasoning-effort');
+      if (Object.hasOwn(CHAT_EFFORT_NAMES, previousEffort)) selectedReasoningEffort = previousEffort;
+    } catch {}
     const chatWelcome = $('#chatWelcome');
     const FREE_TOKEN_LIMIT = 500_000;
     const chatSessionList = $('#chatSessionList');
@@ -324,6 +344,8 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     let chatDeleteResolver = null;
     let pendingChatImages = [];
     let pendingChatAudio = null;
+    let pendingChatFiles = [];
+    let chatAbortController = null;
     let explainStepsEnabled = false;
     let webSearchEnabled = false;
     let activeSpeechRecognition = null;
@@ -1301,6 +1323,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       setActiveMiniAgent();
       pendingChatImages = [];
       pendingChatAudio = null;
+      pendingChatFiles = [];
       renderChatAttachments();
       chatInput.value = '';
       chatInput.style.height = 'auto';
@@ -1417,7 +1440,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
           activeUsageConversationId = session.id;
         }
         const sessionRef = doc(db, 'users', activeChatUser.uid, 'chatSessions', activeChatSessionId);
-        await addDoc(collection(sessionRef, 'messages'), {
+        const messageRef = await addDoc(collection(sessionRef, 'messages'), {
           role, content, model, createdAt: serverTimestamp(),
         });
         await updateDoc(sessionRef, {
@@ -1425,7 +1448,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
           expiresAt: Timestamp.fromDate(new Date(Date.now() + chatRetentionDays() * 24 * 60 * 60 * 1000)),
         });
         await loadChatSessions();
-        return true;
+        return messageRef.id;
       } catch {
         toast('No se pudo guardar el historial. Revisa las reglas de Firestore.');
         return false;
@@ -1475,7 +1498,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
           }
         }
         if (loadId !== chatSessionLoadId) return;
-        const messageData = messageDocs.length ? messageDocs.map(message => message.data()) : storedMessages;
+        const messageData = messageDocs.length ? messageDocs.map(message => ({...message.data(), _id: message.id})) : storedMessages;
         const validMessages = messageData
           .filter(data => ['user', 'assistant'].includes(data?.role)
             && typeof data.content === 'string'
@@ -1494,7 +1517,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         chatWelcome.hidden = orderedMessages.length > 0;
         if (!orderedMessages.length) $('#chatMessages').append(chatWelcome);
         for (const data of orderedMessages) {
-          chatHistory.push({role: data.role, content: data.content});
+          chatHistory.push({role: data.role, content: data.content, ...(data._id ? {_id: data._id} : {})});
           appendChatMessage(data.role, data.content);
         }
         if (session.model && [...$('#chatModel').options].some(option => option.value === session.model)) {
@@ -1517,10 +1540,78 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       }
     }
 
+    function closeChatEffortMenu(returnFocus = false) {
+      if (chatEffortMenu.hidden) return;
+      chatEffortMenu.hidden = true;
+      chatEffortTrigger.setAttribute('aria-expanded', 'false');
+      if (returnFocus) chatEffortTrigger.focus();
+    }
+
+    function syncChatEffortUI() {
+      const label = CHAT_EFFORT_NAMES[selectedReasoningEffort];
+      $('#chatEffortLabel').textContent = label;
+      chatEffortTrigger.setAttribute('aria-label', `Esfuerzo de razonamiento: ${label}`);
+      chatEffortTrigger.title = `Esfuerzo de razonamiento: ${label}`;
+      chatEffortMenu.querySelectorAll('[data-chat-effort]').forEach(option => {
+        option.setAttribute('aria-checked', String(option.dataset.chatEffort === selectedReasoningEffort));
+      });
+    }
+
+    chatEffortTrigger.addEventListener('click', () => {
+      if (chatBusy || chatHistoryBusy) return;
+      const open = chatEffortMenu.hidden;
+      chatEffortMenu.hidden = !open;
+      chatEffortTrigger.setAttribute('aria-expanded', String(open));
+      if (open) {
+        // Mantener el menú completo dentro de la pantalla, incluso en móviles estrechos.
+        chatEffortMenu.style.right = '';
+        const rect = chatEffortMenu.getBoundingClientRect();
+        const shiftRight = Math.max(0, 14 - rect.left);
+        const shiftLeft = Math.max(0, rect.right + shiftRight - window.innerWidth + 14);
+        if (shiftRight || shiftLeft) chatEffortMenu.style.right = `${Math.round(shiftLeft - shiftRight)}px`;
+        chatEffortMenu.querySelector('[aria-checked="true"]')?.focus();
+      }
+    });
+    chatEffortMenu.querySelectorAll('[data-chat-effort]').forEach(option => {
+      option.addEventListener('click', () => {
+        if (chatBusy || chatHistoryBusy) return;
+        selectedReasoningEffort = option.dataset.chatEffort;
+        try { localStorage.setItem('nexus-chat-reasoning-effort', selectedReasoningEffort); } catch {}
+        syncChatEffortUI();
+        closeChatEffortMenu(true);
+      });
+    });
+    document.addEventListener('click', event => {
+      if (!$('#chatEffortControl').contains(event.target)) closeChatEffortMenu();
+    });
+    document.addEventListener('keydown', event => {
+      if (chatEffortMenu.hidden) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeChatEffortMenu(true);
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const options = [...chatEffortMenu.querySelectorAll('[data-chat-effort]')];
+        const currentIndex = options.indexOf(document.activeElement);
+        if (currentIndex !== -1) {
+          event.preventDefault();
+          options[(currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length].focus();
+        }
+      }
+    });
+    syncChatEffortUI();
+
     function syncChatButton() {
       const secondsLeft = Math.max(0, Math.ceil((chatNextAllowedAt - Date.now()) / 1000));
-      const hasAttachments = pendingChatImages.length > 0 || Boolean(pendingChatAudio);
+      const hasAttachments = pendingChatImages.length > 0 || Boolean(pendingChatAudio) || pendingChatFiles.length > 0;
       chatSend.disabled = chatBusy || chatHistoryBusy || (!chatInput.value.trim() && !hasAttachments) || secondsLeft > 0;
+      chatEffortTrigger.disabled = chatBusy || chatHistoryBusy;
+      if (chatEffortTrigger.disabled) closeChatEffortMenu();
+      const stopButton = $('#chatStop');
+      if (stopButton) {
+        const showStop = chatBusy;
+        stopButton.hidden = !showStop;
+        chatSend.hidden = showStop;
+      }
       chatSend.title = secondsLeft ? `Disponible en ${secondsLeft} s` : 'Enviar mensaje';
       $('#chatCooldown').textContent = secondsLeft ? `Disponible en ${secondsLeft} s` : 'Se cuentan tokens de entrada y salida';
     }
@@ -1646,6 +1737,90 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       container.append(actions);
     }
 
+    let chatCodeDrawer = null;
+
+    async function copyChatCode(value, button) {
+      const original = button.innerHTML;
+      try {
+        if (navigator.clipboard?.writeText && window.isSecureContext) {
+          await navigator.clipboard.writeText(value);
+        } else {
+          const field = document.createElement('textarea');
+          field.value = value;
+          field.setAttribute('readonly', '');
+          field.style.position = 'fixed';
+          field.style.opacity = '0';
+          document.body.append(field);
+          field.select();
+          const copied = document.execCommand('copy');
+          field.remove();
+          if (!copied) throw new Error('No se pudo copiar');
+        }
+        button.classList.add('is-copied');
+        button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg><span>Copiado</span>';
+        if (typeof toast === 'function') toast('Código copiado al portapapeles.');
+        window.setTimeout(() => {
+          button.classList.remove('is-copied');
+          button.innerHTML = original;
+        }, 1700);
+      } catch {
+        if (typeof toast === 'function') toast('No se pudo copiar. Selecciona el código y cópialo manualmente.');
+      }
+    }
+
+    function closeChatCodeDrawer() {
+      if (!chatCodeDrawer) return;
+      chatCodeDrawer.classList.remove('is-open');
+      chatCodeDrawer.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('chat-code-drawer-open');
+    }
+
+    function openChatCodeDrawer(codeText, language, filename) {
+      if (!chatCodeDrawer) {
+        chatCodeDrawer = document.createElement('aside');
+        chatCodeDrawer.className = 'chat-code-drawer';
+        chatCodeDrawer.setAttribute('aria-hidden', 'true');
+        chatCodeDrawer.innerHTML = `
+          <button class="chat-code-drawer-backdrop" type="button" aria-label="Cerrar panel de código"></button>
+          <section class="chat-code-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="chatCodeDrawerTitle">
+            <header class="chat-code-drawer-head">
+              <div class="chat-code-drawer-heading">
+                <span class="chat-code-drawer-eyebrow">CÓDIGO</span>
+                <strong id="chatCodeDrawerTitle">Vista ampliada</strong>
+                <small class="chat-code-drawer-filename"></small>
+              </div>
+              <div class="chat-code-drawer-actions">
+                <button class="chat-code-action chat-code-drawer-copy" type="button" aria-label="Copiar código">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span>Copiar</span>
+                </button>
+                <button class="chat-code-action chat-code-drawer-close" type="button" aria-label="Cerrar vista ampliada" title="Cerrar">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
+              </div>
+            </header>
+            <div class="chat-code-drawer-meta"><span class="chat-code-drawer-language"></span><span>Vista de lectura</span></div>
+            <pre class="chat-code-drawer-pre"><code></code></pre>
+          </section>`;
+        document.body.append(chatCodeDrawer);
+        chatCodeDrawer.querySelector('.chat-code-drawer-backdrop').addEventListener('click', closeChatCodeDrawer);
+        chatCodeDrawer.querySelector('.chat-code-drawer-close').addEventListener('click', closeChatCodeDrawer);
+        document.addEventListener('keydown', event => {
+          if (event.key === 'Escape' && chatCodeDrawer?.classList.contains('is-open')) closeChatCodeDrawer();
+        });
+      }
+      chatCodeDrawer.querySelector('.chat-code-drawer-filename').textContent = filename || 'Código';
+      chatCodeDrawer.querySelector('.chat-code-drawer-language').textContent = (language || 'texto').toUpperCase();
+      chatCodeDrawer.querySelector('.chat-code-drawer-pre code').textContent = codeText;
+      const copyButton = chatCodeDrawer.querySelector('.chat-code-drawer-copy');
+      copyButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span>Copiar</span>';
+      copyButton.classList.remove('is-copied');
+      copyButton.onclick = () => copyChatCode(codeText, copyButton);
+      chatCodeDrawer.classList.add('is-open');
+      chatCodeDrawer.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('chat-code-drawer-open');
+      chatCodeDrawer.querySelector('.chat-code-drawer-close').focus();
+    }
+
     function renderChatAnswer(container, text) {
       container.replaceChildren();
       const codeBlocks = [...text.matchAll(/```([^\n`]*)\n([\s\S]*?)```/g)];
@@ -1673,13 +1848,31 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         appendText(text.slice(position, match.index));
         const frame = document.createElement('section');
         frame.className = 'chat-code-frame';
+        const file = files[index] || {name: `Código ${index + 1}`, content: match[2].replace(/\n$/, '')};
         const title = document.createElement('div');
         title.className = 'chat-code-title';
-        title.textContent = files[index]?.name || 'Código';
+        const titleName = document.createElement('span');
+        titleName.className = 'chat-code-filename';
+        titleName.textContent = file.name;
+        const toolbar = document.createElement('div');
+        toolbar.className = 'chat-code-toolbar';
+        const language = (match[1].trim().split(/\s+/, 1)[0] || 'texto').toLowerCase();
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'chat-code-action';
+        copyButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span>Copiar</span>';
+        copyButton.addEventListener('click', () => copyChatCode(file.content, copyButton));
+        const expandButton = document.createElement('button');
+        expandButton.type = 'button';
+        expandButton.className = 'chat-code-action chat-code-expand';
+        expandButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg><span>Abrir en grande</span>';
+        expandButton.addEventListener('click', () => openChatCodeDrawer(file.content, language, file.name));
+        toolbar.append(copyButton, expandButton);
+        title.append(titleName, toolbar);
         const pre = document.createElement('pre');
         pre.className = 'chat-code-block';
         const code = document.createElement('code');
-        code.textContent = files[index]?.content || '';
+        code.textContent = file.content;
         pre.append(code);
         frame.append(title, pre);
         container.append(frame);
@@ -1721,6 +1914,11 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
             image.src = attachment.dataUrl;
             image.alt = attachment.name || 'Imagen adjunta';
             content.append(image);
+          } else if (attachment.fileName) {
+            const label = document.createElement('span');
+            label.className = 'chat-message-attachment-label';
+            label.textContent = `Archivo adjunto: ${attachment.fileName}`;
+            content.append(label);
           } else if (attachment.name) {
             const label = document.createElement('span');
             label.className = 'chat-message-attachment-label';
@@ -1728,6 +1926,19 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
             content.append(label);
           }
         }
+        // El índice permite saber qué mensaje de chatHistory se está editando.
+        article.dataset.hidx = String(Math.max(0, chatHistory.length - 1));
+        const actions = document.createElement('div');
+        actions.className = 'chat-message-actions';
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'chat-message-action';
+        editButton.title = hasChatProTools() ? 'Editar mensaje' : 'Editar mensajes: solo Pro y Premium';
+        editButton.setAttribute('aria-label', 'Editar mensaje');
+        editButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1Z"/></svg><span>Editar</span>';
+        editButton.addEventListener('click', () => beginChatEdit(article));
+        actions.append(editButton);
+        content.append(actions);
         article.append(content);
       }
       $('#chatMessages').append(article);
@@ -1786,7 +1997,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     function renderChatAttachments() {
       const container = $('#chatAttachments');
       container.replaceChildren();
-      container.hidden = !pendingChatImages.length && !pendingChatAudio;
+      container.hidden = !pendingChatImages.length && !pendingChatAudio && !pendingChatFiles.length;
       pendingChatImages.forEach((attachment, index) => {
         const item = document.createElement('div');
         item.className = 'chat-attachment-preview';
@@ -1804,6 +2015,24 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
           syncChatButton();
         });
         item.append(image, remove);
+        container.append(item);
+      });
+      pendingChatFiles.forEach((file, index) => {
+        const item = document.createElement('div');
+        item.className = 'chat-audio-preview chat-file-preview';
+        const label = document.createElement('span');
+        label.textContent = `${file.name} · ${file.text.length.toLocaleString('es')} caracteres${file.truncated ? ' (recortado)' : ''}`;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.title = `Quitar ${file.name}`;
+        remove.setAttribute('aria-label', remove.title);
+        remove.textContent = '×';
+        remove.addEventListener('click', () => {
+          pendingChatFiles.splice(index, 1);
+          renderChatAttachments();
+          syncChatButton();
+        });
+        item.append(label, remove);
         container.append(item);
       });
       if (pendingChatAudio) {
@@ -1828,37 +2057,47 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
 
     async function sendChatMessage(rawMessage) {
       const typedMessage = rawMessage.trim();
-      if ((!typedMessage && !pendingChatImages.length && !pendingChatAudio) || chatBusy || chatHistoryBusy) return;
+      if ((!typedMessage && !pendingChatImages.length && !pendingChatAudio && !pendingChatFiles.length) || chatBusy || chatHistoryBusy) return;
       if (!planHasFeature('chat')) {
         setActiveView('plans');
         return;
       }
       const model = $('#chatModel').value;
+      const reasoningEffort = selectedReasoningEffort;
       const modelConfig = configuredModels.find(item => item.id === model) || DEFAULT_MODELS.find(item => item.id === model);
       if (pendingChatImages.length && modelConfig?.vision !== true) return toast('El modelo seleccionado no admite imágenes. Elige uno compatible.');
       if (pendingChatAudio && modelConfig?.audio !== true) return toast('El modelo seleccionado no admite audio. Elige uno compatible.');
+      if (pendingChatFiles.length && !requireChatProTools('Adjuntar archivos')) return;
+      const files = pendingChatFiles.map(({name, text}) => ({name, text}));
       const images = pendingChatImages.map(attachment => attachment.dataUrl);
       const audio = pendingChatAudio ? {data: pendingChatAudio.data, format: pendingChatAudio.format} : null;
-      const message = typedMessage || (audio && images.length
-        ? 'Transcribe el audio adjunto y analiza también las imágenes.'
-        : audio ? 'Transcribe el audio adjunto y responde a su contenido.'
-          : 'Analiza y describe la imagen adjunta.');
+      const message = typedMessage || (files.length && !audio && !images.length
+        ? 'Lee el archivo adjunto y hazme un resumen de su contenido.'
+        : audio && images.length
+          ? 'Transcribe el audio adjunto y analiza también las imágenes.'
+          : audio ? 'Transcribe el audio adjunto y responde a su contenido.'
+            : 'Analiza y describe la imagen adjunta.');
       const secondsLeft = Math.ceil((chatNextAllowedAt - Date.now()) / 1000);
       if (secondsLeft > 0) return toast(`La API gratuita estará disponible en ${secondsLeft} s.`);
       let headers;
       try { headers = await authenticatedHeaders(); }
       catch (error) { return toast(error.message); }
       chatWelcome.hidden = true;
-      chatHistory.push({role: 'user', content: message});
+      const userEntry = {role: 'user', content: message, ...(files.length ? {files} : {})};
+      chatHistory.push(userEntry);
       appendChatMessage('user', message, false, [
         ...pendingChatImages,
         ...(pendingChatAudio ? [{name: pendingChatAudio.name}] : []),
+        ...files.map(file => ({fileName: file.name})),
       ]);
       pendingChatImages = [];
       pendingChatAudio = null;
+      pendingChatFiles = [];
       renderChatAttachments();
       const thinking = appendChatMessage('assistant', '', true);
       chatInput.value = ''; chatInput.style.height = 'auto';
+      chatAbortController = new AbortController();
+      const abortSignal = chatAbortController.signal;
       chatBusy = true; chatNextAllowedAt = Date.now() + 2000; syncChatButton();
       if (!hasModelAccess(model)) {
         thinking.remove();
@@ -1871,18 +2110,24 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       }
       try {
         const historySaved = await saveChatEntry('user', message, model);
+        if (historySaved) userEntry._id = historySaved;
+        if (abortSignal.aborted) throw new DOMException('Respuesta detenida.', 'AbortError');
+        const requestFiles = hasChatProTools() ? collectChatFiles() : [];
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers,
+          signal: abortSignal,
           body: JSON.stringify({
             model,
-            messages: chatHistory.slice(-12),
+            messages: chatHistory.slice(-12).map(({role, content}) => ({role, content})),
+            ...(requestFiles.length ? {files: requestFiles} : {}),
             conversationId: activeUsageConversationId,
             images,
             ...(audio ? {audio} : {}),
             ...(activeAgentInstructions ? {agentName: activeAgentName, agentInstructions: activeAgentInstructions} : {}),
             ...(activeMiniAgentId.startsWith('preset:') ? {agentPresetId: activeMiniAgentId.slice(7)} : {}),
             explainSteps: explainStepsEnabled,
+            reasoningEffort,
             webSearch: webSearchEnabled,
           })
         });
@@ -1902,18 +2147,217 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
           })
           : [];
         const savedAnswer = sources.length ? `${answer}\n\n## Fuentes\n${sources.join('\n')}` : answer;
-        chatHistory.push({role: 'assistant', content: savedAnswer});
-        if (historySaved) await saveChatEntry('assistant', savedAnswer, model);
+        const assistantEntry = {role: 'assistant', content: savedAnswer};
+        chatHistory.push(assistantEntry);
+        if (historySaved) {
+          const savedId = await saveChatEntry('assistant', savedAnswer, model);
+          if (savedId) assistantEntry._id = savedId;
+        }
         const content = thinking.querySelector('.chat-assistant-content');
         content.replaceChildren();
         const answerNode = document.createElement('div'); answerNode.className = 'chat-message-text'; renderChatAnswer(answerNode, savedAnswer); content.append(answerNode);
       } catch (error) {
         const content = thinking.querySelector('.chat-assistant-content'); content.replaceChildren();
-        const answerNode = document.createElement('div'); answerNode.className = 'chat-message-text'; answerNode.textContent = error.message || 'No se pudo conectar con la API gratuita. Prueba otra vez más tarde.'; content.append(answerNode);
-        chatHistory.pop();
+        const stopped = error?.name === 'AbortError';
+        const answerNode = document.createElement('div'); answerNode.className = 'chat-message-text'; answerNode.textContent = stopped ? 'Respuesta detenida.' : (error.message || 'No se pudo conectar con la API gratuita. Prueba otra vez más tarde.'); content.append(answerNode);
+        // Si la detuvo el usuario se conserva su mensaje en el contexto (y en el historial guardado).
+        if (!stopped) chatHistory.pop();
       } finally {
+        chatAbortController = null;
         chatBusy = false; syncChatButton(); chatInput.focus(); loadUsagePeriod();
       }
+    }
+
+
+    // ---------- Pro/Premium: archivos adjuntos, detener respuesta y editar mensajes ----------
+    const CHAT_TEXT_FILE_EXTENSIONS = new Set([
+      'txt', 'md', 'markdown', 'html', 'htm', 'css', 'js', 'mjs', 'ts', 'tsx', 'jsx', 'json', 'csv', 'tsv',
+      'xml', 'yml', 'yaml', 'py', 'java', 'c', 'cpp', 'cs', 'go', 'rs', 'php', 'rb', 'sql', 'sh', 'log',
+      'ini', 'toml', 'vue', 'svg',
+    ]);
+    const CHAT_MAX_FILES = 3;
+    const CHAT_FILE_CHAR_LIMIT = 30000;
+    const CHAT_FILES_TOTAL_LIMIT = 60000;
+
+    // Lee word/document.xml de un .docx (ZIP) sin librerías externas.
+    async function extractDocxText(file) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const view = new DataView(bytes.buffer);
+      let eocd = -1;
+      for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+        if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      }
+      if (eocd < 0) throw new Error('El archivo Word no es válido o está dañado.');
+      const entries = view.getUint16(eocd + 10, true);
+      let offset = view.getUint32(eocd + 16, true);
+      for (let n = 0; n < entries; n++) {
+        if (view.getUint32(offset, true) !== 0x02014b50) break;
+        const method = view.getUint16(offset + 10, true);
+        const compressedSize = view.getUint32(offset + 20, true);
+        const nameLength = view.getUint16(offset + 28, true);
+        const extraLength = view.getUint16(offset + 30, true);
+        const commentLength = view.getUint16(offset + 32, true);
+        const localOffset = view.getUint32(offset + 42, true);
+        const name = new TextDecoder().decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
+        if (name === 'word/document.xml') {
+          const start = localOffset + 30 + view.getUint16(localOffset + 26, true) + view.getUint16(localOffset + 28, true);
+          const raw = bytes.subarray(start, start + compressedSize);
+          let xmlBytes;
+          if (method === 0) xmlBytes = raw;
+          else if (method === 8 && 'DecompressionStream' in window) {
+            xmlBytes = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+          } else throw new Error('Tu navegador no puede abrir archivos Word. Actualízalo o pega el texto.');
+          const xml = new DOMParser().parseFromString(new TextDecoder().decode(xmlBytes), 'application/xml');
+          const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+          const paragraphs = [...xml.getElementsByTagNameNS(W, 'p')].map(paragraph => {
+            let line = '';
+            for (const node of paragraph.getElementsByTagNameNS(W, '*')) {
+              if (node.localName === 't') line += node.textContent;
+              else if (node.localName === 'tab') line += '\t';
+              else if (node.localName === 'br') line += '\n';
+            }
+            return line;
+          });
+          return paragraphs.join('\n');
+        }
+        offset += 46 + nameLength + extraLength + commentLength;
+      }
+      throw new Error('No encontré texto en el archivo Word.');
+    }
+
+    async function readChatFile(file) {
+      const extension = (file.name.split('.').pop() || '').toLowerCase();
+      const isDocx = extension === 'docx';
+      if (!isDocx && !CHAT_TEXT_FILE_EXTENSIONS.has(extension)) {
+        throw new Error(`No puedo leer archivos .${extension || 'sin extensión'}. Usa TXT, MD, HTML, CSV, JSON, código o Word (.docx).`);
+      }
+      if (file.size > (isDocx ? 5 : 1) * 1024 * 1024) throw new Error(`${file.name} pesa demasiado (máximo ${isDocx ? 5 : 1} MB).`);
+      const text = (isDocx ? await extractDocxText(file) : await file.text()).replace(/\u0000/g, '').trim();
+      if (!text) throw new Error(`${file.name} no tiene texto legible.`);
+      return {name: file.name.slice(0, 120), text: text.slice(0, CHAT_FILE_CHAR_LIMIT), truncated: text.length > CHAT_FILE_CHAR_LIMIT};
+    }
+
+    // Los archivos de los mensajes recientes se reenvían para que la IA siga "viéndolos" en la conversación.
+    function collectChatFiles() {
+      const collected = [];
+      let total = 0;
+      for (const entry of chatHistory.slice(-12).reverse()) {
+        for (const file of [...(entry.files || [])].reverse()) {
+          if (collected.length >= CHAT_MAX_FILES || total + file.text.length > CHAT_FILES_TOTAL_LIMIT) continue;
+          collected.unshift({name: file.name, text: file.text});
+          total += file.text.length;
+        }
+      }
+      return collected;
+    }
+
+    $('#chatFileButton').addEventListener('click', () => {
+      if (!requireChatProTools('Adjuntar archivos')) return;
+      $('#chatFileInput').click();
+    });
+    $('#chatFileInput').addEventListener('change', async event => {
+      const picked = [...event.currentTarget.files];
+      event.currentTarget.value = '';
+      if (!picked.length || !requireChatProTools('Adjuntar archivos')) return;
+      const room = Math.max(0, CHAT_MAX_FILES - pendingChatFiles.length);
+      if (picked.length > room) toast(`Puedes adjuntar hasta ${CHAT_MAX_FILES} archivos por mensaje.`);
+      for (const file of picked.slice(0, room)) {
+        try {
+          const attachment = await readChatFile(file);
+          pendingChatFiles.push(attachment);
+          if (attachment.truncated) toast(`De ${attachment.name} se usarán los primeros ${CHAT_FILE_CHAR_LIMIT.toLocaleString('es')} caracteres.`);
+        } catch (error) {
+          toast(error.message || 'No se pudo leer el archivo.');
+        }
+      }
+      renderChatAttachments();
+      syncChatButton();
+    });
+
+    $('#chatStop').addEventListener('click', () => {
+      if (chatBusy && chatAbortController) chatAbortController.abort();
+    });
+
+    function beginChatEdit(article) {
+      if (!requireChatProTools('Editar mensajes')) return;
+      if (chatBusy || chatHistoryBusy) return toast('Espera a que termine la respuesta o detenla para editar.');
+      if (article.classList.contains('is-editing')) return;
+      const index = Number(article.dataset.hidx);
+      const bubble = article.querySelector('.chat-bubble');
+      const actions = article.querySelector('.chat-message-actions');
+      const content = article.querySelector('.chat-user-content');
+      const original = chatHistory[index]?.content ?? bubble.textContent;
+      const box = document.createElement('div');
+      box.className = 'chat-edit-box';
+      const textarea = document.createElement('textarea');
+      textarea.value = original;
+      textarea.maxLength = 4000;
+      textarea.rows = Math.min(8, Math.max(2, original.split('\n').length));
+      textarea.setAttribute('aria-label', 'Editar mensaje');
+      const buttons = document.createElement('div');
+      buttons.className = 'chat-edit-actions';
+      const cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.className = 'btn'; cancel.textContent = 'Cancelar';
+      const save = document.createElement('button');
+      save.type = 'button'; save.className = 'btn primary'; save.textContent = 'Guardar y reenviar';
+      const hint = document.createElement('small');
+      hint.textContent = 'Se reemplazarán este mensaje y las respuestas posteriores.';
+      buttons.append(cancel, save);
+      box.append(textarea, hint, buttons);
+      const close = () => {
+        box.remove();
+        bubble.hidden = false;
+        if (actions) actions.hidden = false;
+        article.classList.remove('is-editing');
+      };
+      cancel.addEventListener('click', close);
+      textarea.addEventListener('keydown', event => {
+        if (event.key === 'Escape') close();
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); save.click(); }
+      });
+      save.addEventListener('click', async () => {
+        const text = textarea.value.trim();
+        if (!text) return toast('El mensaje no puede estar vacío.');
+        if (chatBusy || chatHistoryBusy) return;
+        save.disabled = cancel.disabled = true;
+        const applied = await applyChatEdit(article, index, text);
+        if (!applied) { save.disabled = cancel.disabled = false; }
+      });
+      bubble.hidden = true;
+      if (actions) actions.hidden = true;
+      article.classList.add('is-editing');
+      content.insertBefore(box, bubble.nextSibling);
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+
+    async function applyChatEdit(article, index, text) {
+      chatHistoryBusy = true;
+      syncChatButton();
+      const removed = chatHistory.slice(index);
+      try {
+        if (activeChatUser && activeChatSessionId) {
+          const sessionRef = doc(db, 'users', activeChatUser.uid, 'chatSessions', activeChatSessionId);
+          await Promise.all(removed.filter(entry => entry._id).map(entry => deleteDoc(doc(sessionRef, 'messages', entry._id))));
+          if (index === 0) await updateDoc(sessionRef, {title: text.slice(0, 64), updatedAt: serverTimestamp()}).catch(() => {});
+        }
+      } catch (error) {
+        console.error('No se pudo borrar el tramo editado del historial:', error);
+        toast('No se pudo actualizar el historial guardado. Inténtalo de nuevo.');
+        chatHistoryBusy = false;
+        syncChatButton();
+        return false;
+      }
+      const restoredFiles = removed[0]?.files || [];
+      chatHistory.length = Math.min(index, chatHistory.length);
+      while (article.nextElementSibling) article.nextElementSibling.remove();
+      article.remove();
+      pendingChatFiles = [...restoredFiles, ...pendingChatFiles].slice(0, CHAT_MAX_FILES);
+      renderChatAttachments();
+      chatHistoryBusy = false;
+      syncChatButton();
+      await sendChatMessage(text);
+      return true;
     }
 
     chatForm.addEventListener('submit', event => { event.preventDefault(); sendChatMessage(chatInput.value); });
@@ -2177,24 +2621,62 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       }
     }
 
+    async function fetchFeedbackBackup(path, options = {}) {
+      const headers = await authenticatedHeaders();
+      const response = await fetch(path, {
+        ...options,
+        headers: {...headers, ...(options.headers || {})},
+        cache: 'no-store',
+      });
+      let data = {};
+      try { data = await response.json(); } catch (_) {}
+      if (!response.ok) {
+        const failure = new Error(data.error || `El servidor respondió ${response.status}.`);
+        failure.status = response.status;
+        throw failure;
+      }
+      return data;
+    }
+
+    function friendlyFeedbackFailure(error) {
+      if (error?.code === 'permission-denied') {
+        return 'Firestore rechazó el acceso. El servidor de respaldo tampoco pudo guardar la propuesta. Revisa las reglas de Firebase y que el backend esté activo.';
+      }
+      if (error?.status === 401) return 'Tu sesión venció. Vuelve a iniciar sesión.';
+      if (error?.status === 429) return error.message || 'Llegaste al límite diario de propuestas.';
+      if (error?.status === 404 || error?.status === 405) {
+        return 'El servidor no tiene instalada la actualización del feedback. Reemplaza server.py y reinícialo.';
+      }
+      return error?.message ? `No se pudo enviar: ${error.message}` : 'No se pudo enviar. Revisa la conexión y vuelve a intentarlo.';
+    }
+
     async function loadMyFeedback() {
       const loadVersion = ++myFeedbackLoadVersion;
       const user = activeChatUser;
       if (!user) return renderMyFeedback([]);
-      try {
-        const snapshot = await getDocs(query(collection(db, 'feedback'), where('uid', '==', user.uid), limit(50)));
-        if (loadVersion !== myFeedbackLoadVersion || activeChatUser?.uid !== user.uid) return;
-        const items = snapshot.docs
-          .map(item => ({id: item.id, ...item.data()}))
-          .sort((left, right) => (right.createdAt?.toDate?.().getTime?.() || 0) - (left.createdAt?.toDate?.().getTime?.() || 0));
-        renderMyFeedback(items);
-      } catch (error) {
-        console.warn('No se pudo cargar el feedback del usuario:', error);
-        if (loadVersion !== myFeedbackLoadVersion) return;
-        $('#myFeedbackList').textContent = error.code === 'permission-denied'
-          ? 'Firestore no permite consultar tus propuestas. Publica las reglas actualizadas.'
-          : 'No se pudieron cargar tus propuestas.';
+      const [firestoreResult, backupResult] = await Promise.allSettled([
+        getDocs(query(collection(db, 'feedback'), where('uid', '==', user.uid), limit(50))),
+        fetchFeedbackBackup('/api/feedback'),
+      ]);
+      if (loadVersion !== myFeedbackLoadVersion || activeChatUser?.uid !== user.uid) return;
+      const items = [];
+      if (firestoreResult.status === 'fulfilled') {
+        items.push(...firestoreResult.value.docs.map(item => ({id: item.id, ...item.data()})));
       }
+      if (backupResult.status === 'fulfilled' && Array.isArray(backupResult.value.items)) {
+        items.push(...backupResult.value.items);
+      }
+      if (firestoreResult.status !== 'fulfilled' && backupResult.status !== 'fulfilled') {
+        console.warn('No se pudo cargar feedback:', firestoreResult.reason, backupResult.reason);
+        $('#myFeedbackList').textContent = friendlyFeedbackFailure(backupResult.reason);
+        $('#myFeedbackCount').textContent = '—';
+        return;
+      }
+      items.sort((left, right) => {
+        const dateValue = item => item.createdAt?.toDate?.()?.getTime() || new Date(item.createdAt || 0).getTime() || 0;
+        return dateValue(right) - dateValue(left);
+      });
+      renderMyFeedback(items);
     }
 
     $('#feedbackForm').addEventListener('submit', async event => {
@@ -2213,31 +2695,46 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         feedbackStatus.textContent = 'Completa el título, los detalles y tu valoración.';
         return;
       }
+      const feedbackData = {
+        type: $('#feedbackType').value, area: $('#feedbackArea').value,
+        title: title.slice(0, 90), details: details.slice(0, 1800), rating,
+      };
       sendButton.disabled = true;
       sendButton.textContent = 'Enviando…';
       feedbackStatus.textContent = '';
       try {
-        await addDoc(collection(db, 'feedback'), {
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || user.email?.split('@')[0] || 'Usuario',
-          type: $('#feedbackType').value,
-          area: $('#feedbackArea').value,
-          title: title.slice(0, 90),
-          details: details.slice(0, 1800),
-          rating,
-          status: 'pending',
-          response: '',
-          createdAt: serverTimestamp(),
-        });
+        let usedBackup = false;
+        try {
+          await addDoc(collection(db, 'feedback'), {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || user.email?.split('@')[0] || 'Usuario',
+            ...feedbackData,
+            status: 'pending', response: '', createdAt: serverTimestamp(),
+          });
+        } catch (firestoreError) {
+          console.warn('Firestore no pudo recibir la propuesta. Se intenta respaldo:', firestoreError);
+          try {
+            await fetchFeedbackBackup('/api/feedback', {
+              method: 'POST', body: JSON.stringify(feedbackData),
+            });
+            usedBackup = true;
+          } catch (backupError) {
+            console.warn('Tampoco pudo guardar el servidor:', backupError);
+            const failure = new Error(friendlyFeedbackFailure(backupError));
+            failure.cause = firestoreError;
+            throw failure;
+          }
+        }
         event.currentTarget.reset();
-        feedbackStatus.textContent = 'Propuesta enviada. Gracias por ayudar a mejorar Nexus.';
+        feedbackStatus.textContent = usedBackup
+          ? 'Propuesta guardada en Nexus. La encontrarás en Tus propuestas; el equipo la recibirá desde el panel admin.'
+          : 'Propuesta enviada. Gracias por ayudar a mejorar Nexus.';
         toast('Feedback enviado al equipo.');
         await loadMyFeedback();
       } catch (error) {
-        feedbackStatus.textContent = error.code === 'permission-denied'
-          ? 'No se pudo enviar. Publica las reglas actualizadas de Firestore e inténtalo otra vez.'
-          : 'No se pudo enviar tu propuesta. Revisa la conexión e inténtalo otra vez.';
+        console.error('Falló el envío de feedback:', error);
+        feedbackStatus.textContent = error.message || friendlyFeedbackFailure(error);
       } finally {
         sendButton.disabled = false;
         sendButton.textContent = 'Enviar propuesta';
@@ -2262,23 +2759,123 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       $('#chatTokenCount').textContent = 'Cuota no disponible';
     });
 
+    // Crear imagen: plantillas y ayudas locales. No cambian el proveedor ni el contrato de la API.
     const prompt = $('#prompt');
-    prompt.addEventListener('input', () => $('#charCount').textContent = `${prompt.value.length} / 500`);
+    const createPresets = {
+      portrait: {prompt: 'Retrato editorial de una persona de expresión serena junto a una ventana, fondo discreto, piel y texturas naturales, fotografía profesional, luz suave y composición cuidada', style: 'Fotografía', lighting: 'softbox', composition: 'closeup', palette: 'warm', quality: 'natural', ratio: '3:4'},
+      product: {prompt: 'Un frasco de perfume de vidrio sobre piedra pulida, sombras suaves y reflejos delicados, escenografía minimalista, fotografía de producto premium con detalles definidos', style: 'Producto editorial', lighting: 'softbox', composition: 'closeup', palette: 'balanced', quality: 'vivid', ratio: '1:1'},
+      landscape: {prompt: 'Un valle de montañas con un lago cristalino al atardecer, nubes doradas, perspectiva amplia y atmósfera cinematográfica, paisaje natural detallado', style: 'Cinematográfico', lighting: 'golden', composition: 'wide', palette: 'warm', quality: 'vivid', ratio: '4:3'},
+      anime: {prompt: 'Una pequeña librería flotante sobre las nubes al amanecer, faroles de papel, flores y un cielo de fantasía, ilustración anime detallada y ambiente mágico', style: 'Anime', lighting: 'golden', composition: 'wide', palette: 'pastel', quality: 'soft', ratio: '4:3'},
+    };
+    function clearCreatePresetSelection() {
+      $$('#view-create .create-preset-card').forEach(card => card.setAttribute('aria-pressed', 'false'));
+    }
+    function updateCreatePromptHelp() {
+      const length = prompt.value.length;
+      $('#charCount').textContent = `${length} / 500`;
+      $('#createPromptProgress').style.width = `${Math.min(100, length / 500 * 100)}%`;
+      $('#createPromptHint').textContent = !length
+        ? 'Describe el sujeto, el entorno y la luz para empezar.'
+        : length < 40
+          ? 'Buen inicio. Añade dónde ocurre la escena y qué ambiente imaginas.'
+          : length < 100
+            ? 'Puedes mencionar colores, iluminación o tipo de encuadre.'
+            : 'Tienes una descripción detallada. Elige un estilo y genera cuando quieras.';
+    }
+    prompt.addEventListener('input', () => { updateCreatePromptHelp(); clearCreatePresetSelection(); });
     $('#clearPrompt').addEventListener('click', () => { prompt.value = ''; prompt.dispatchEvent(new Event('input')); prompt.focus(); });
     $('#enhancePrompt').addEventListener('click', () => {
-      const text = prompt.value.trim();
-      if (!text) return toast('Escribe una idea para mejorarla.');
-      if (!/(detalles|luz|composición|textura)/i.test(text)) {
-        prompt.value = `${text}, sujeto principal claro, composición cuidada, iluminación coherente y detalles nítidos`;
+      const current = prompt.value.trim();
+      if (!current) return toast('Escribe una idea para mejorarla.');
+      const addition = ', sujeto principal claro, composición cuidada, iluminación coherente y detalles nítidos';
+      if (!/(detalles|luz|composición|textura)/i.test(current)) {
+        const available = prompt.maxLength - current.length;
+        if (available > 0) prompt.value = current + addition.slice(0, available);
       }
       prompt.dispatchEvent(new Event('input'));
     });
-    $$('#styles .chip').forEach(chip => chip.addEventListener('click', () => { $$('#styles .chip').forEach(item => item.classList.toggle('selected', item === chip)); }));
+    function setCreateStyle(style) {
+      $$('#styles .chip').forEach(chip => chip.classList.toggle('selected', chip.dataset.style === style));
+    }
+    function setCreateRatio(next) {
+      ratio = next;
+      $$('#ratios button').forEach(button => button.classList.toggle('selected', button.dataset.ratio === next));
+      updateCreateSummary();
+    }
+    function updateCreateSummary() {
+      const style = $('#styles .chip.selected')?.dataset.style || 'Fotografía';
+      const labels = {'1:1': 'Cuadrado · 768 × 768', '4:3': 'Horizontal · 768 × 576', '3:4': 'Vertical · 576 × 768'};
+      const lighting = {natural: 'Luz natural', golden: 'Hora dorada', softbox: 'Luz de estudio', dramatic: 'Luz dramática', neon: 'Luz de neón'};
+      $('#createSummaryStyle').textContent = style;
+      $('#createSummaryRatio').textContent = labels[ratio];
+      $('#createSummaryLighting').textContent = lighting[$('#imageLighting').value] || 'Luz natural';
+    }
+    $$('#styles .chip').forEach(chip => chip.addEventListener('click', () => { setCreateStyle(chip.dataset.style); clearCreatePresetSelection(); updateCreateSummary(); }));
     $('#randomizeImageSeed').addEventListener('click', () => {
       $('#imageSeed').value = String(Math.floor(Math.random() * 1_000_000));
     });
     let ratio = '1:1';
-    $$('#ratios button').forEach(button => button.addEventListener('click', () => { ratio = button.dataset.ratio; $$('#ratios button').forEach(item => item.classList.toggle('selected', item === button)); $('#resultMeta').textContent = `Imagen generada · ${ratio}`; }));
+    $$('#ratios button').forEach(button => button.addEventListener('click', () => { setCreateRatio(button.dataset.ratio); clearCreatePresetSelection(); }));
+    ['imageLighting', 'imageComposition', 'imagePalette', 'quality', 'imageAvoid', 'imageSeed'].forEach(id => {
+      $(`#${id}`).addEventListener('change', () => { clearCreatePresetSelection(); updateCreateSummary(); });
+    });
+    $$('#view-create .create-preset-card').forEach(card => card.addEventListener('click', () => {
+      const preset = createPresets[card.dataset.createPreset];
+      if (!preset) return;
+      prompt.value = preset.prompt;
+      prompt.dispatchEvent(new Event('input'));
+      setCreateStyle(preset.style);
+      $('#imageLighting').value = preset.lighting;
+      $('#imageComposition').value = preset.composition;
+      $('#imagePalette').value = preset.palette;
+      $('#quality').value = preset.quality;
+      $('#imageSeed').value = '';
+      $('#imageAvoid').value = '';
+      setCreateRatio(preset.ratio);
+      clearCreatePresetSelection();
+      card.setAttribute('aria-pressed', 'true');
+      updateCreateSummary();
+      toast('Plantilla cargada. Puedes editar cada detalle antes de generar.');
+    }));
+    async function copyCreatePrompt() {
+      const value = prompt.value.trim();
+      if (!value) return toast('Escribe o elige una descripción para copiar.');
+      try {
+        if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(value);
+        else {
+          const field = document.createElement('textarea');
+          field.value = value; field.style.position = 'fixed'; field.style.opacity = '0';
+          document.body.append(field); field.select();
+          const copied = document.execCommand('copy'); field.remove();
+          if (!copied) throw new Error('No se pudo copiar');
+        }
+        toast('Descripción copiada al portapapeles.');
+      } catch { toast('No se pudo copiar. Selecciona el texto y cópialo manualmente.'); }
+    }
+    $('#createCopyPrompt').addEventListener('click', copyCreatePrompt);
+    $('#createCopyIdea').addEventListener('click', copyCreatePrompt);
+    $('#createSurprisePrompt').addEventListener('click', () => {
+      const examples = $$('[data-image-prompt]');
+      if (!examples.length) return;
+      const example = examples[Math.floor(Math.random() * examples.length)];
+      prompt.value = example.dataset.imagePrompt.slice(0, prompt.maxLength);
+      prompt.dispatchEvent(new Event('input'));
+      toast('Nueva idea lista para personalizar.');
+    });
+    prompt.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        $('#generate').click();
+      }
+    });
+    $('#createVariation').addEventListener('click', () => {
+      if (!prompt.value.trim()) return toast('Primero escribe o selecciona una idea.');
+      if ($('#generate').disabled) return;
+      $('#randomizeImageSeed').click();
+      $('#generate').click();
+    });
+    updateCreatePromptHelp();
+    updateCreateSummary();
 
     let generationAllowedAt = 0;
     let imageLimitRetryAt = 0;
@@ -2354,6 +2951,8 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
       button.disabled = true; $('span', button).textContent = 'Generando…';
       $('#loadingTitle').textContent = 'Creando tu imagen'; $('#loadingDetail').textContent = 'La API gratuita puede tardar un poco.';
       empty.classList.add('show'); $('#imageStatus').textContent = 'Generando imagen…';
+      $('#createPreviewLabel').textContent = 'CREANDO TU IMAGEN';
+      $('#createVariation').disabled = true;
       image.style.visibility = 'hidden';
       try {
         const headers = await authenticatedHeaders();
@@ -2368,6 +2967,8 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
           empty.classList.remove('show'); image.style.visibility = 'visible';
           $('#imageStatus').textContent = 'Límite diario alcanzado';
           button.disabled = false; $('span', button).textContent = 'Generar imagen';
+          $('#createVariation').disabled = false;
+          $('#createPreviewLabel').textContent = generatedImageObjectUrl ? 'IMAGEN GENERADA' : 'IMAGEN DE EJEMPLO';
           showImageLimitDialog(data?.retryAfterSeconds || 0);
           return;
         }
@@ -2382,7 +2983,8 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         image.onload = () => {
           image.onload = null; image.onerror = null;
           if (previousObjectUrl) URL.revokeObjectURL(previousObjectUrl);
-          empty.classList.remove('show'); image.style.visibility = 'visible'; $('#imageStatus').textContent = 'Imagen lista'; $('#imageCaption').textContent = `${description.slice(0, 34)}${description.length > 34 ? '…' : ''}`; $('#resultMeta').textContent = `Generada · ${ratio}`; button.disabled = false; $('span', button).textContent = 'Generar imagen';
+          empty.classList.remove('show'); image.style.visibility = 'visible'; $('#imageStatus').textContent = 'Imagen lista'; $('#imageCaption').textContent = `${description.slice(0, 34)}${description.length > 34 ? '…' : ''}`; $('#resultMeta').textContent = `Generada · ${ratio}`; button.disabled = false; $('span', button).textContent = 'Generar imagen'; $('#createVariation').disabled = false;
+          $('#createPreviewLabel').textContent = 'IMAGEN GENERADA'; image.alt = `Imagen generada: ${description.slice(0, 120)}`;
           if (quotaRemaining === '0') showImageLimitDialog(retryAfter);
           if (canUseImageLibrary()) {
             saveGeneratedImage(image, imagePrompt, ratio, seed).then(saved => {
@@ -2406,12 +3008,12 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         image.onerror = () => {
           image.onload = null; image.onerror = null; URL.revokeObjectURL(objectUrl);
           if (generatedImageObjectUrl === objectUrl) generatedImageObjectUrl = previousObjectUrl;
-          empty.classList.add('show'); $('#loadingTitle').textContent = 'No se pudo generar'; $('#loadingDetail').textContent = 'La respuesta del proveedor no se pudo abrir como imagen.'; $('#imageStatus').textContent = 'Error de generación'; button.disabled = false; $('span', button).textContent = 'Intentar de nuevo';
+          empty.classList.add('show'); $('#loadingTitle').textContent = 'No se pudo generar'; $('#loadingDetail').textContent = 'La respuesta del proveedor no se pudo abrir como imagen.'; $('#imageStatus').textContent = 'Error de generación'; button.disabled = false; $('span', button).textContent = 'Intentar de nuevo'; $('#createVariation').disabled = false; $('#createPreviewLabel').textContent = 'ERROR DE GENERACIÓN';
         };
         image.src = objectUrl;
         toast('Solicitud enviada al generador.');
       } catch (error) {
-        empty.classList.add('show'); $('#loadingTitle').textContent = 'No se pudo generar'; $('#loadingDetail').textContent = error.message || 'Inténtalo más tarde.'; $('#imageStatus').textContent = 'Error de generación'; button.disabled = false; $('span', button).textContent = 'Intentar de nuevo';
+        empty.classList.add('show'); $('#loadingTitle').textContent = 'No se pudo generar'; $('#loadingDetail').textContent = error.message || 'Inténtalo más tarde.'; $('#imageStatus').textContent = 'Error de generación'; button.disabled = false; $('span', button).textContent = 'Intentar de nuevo'; $('#createVariation').disabled = false; $('#createPreviewLabel').textContent = 'ERROR DE GENERACIÓN';
       }
     });
     $('#openImage').addEventListener('click', () => window.open($('#generatedImage').src, '_blank', 'noopener'));
@@ -2421,7 +3023,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     });
     $$('.thumb').forEach(thumb => thumb.addEventListener('click', () => {
       if (generatedImageObjectUrl) { URL.revokeObjectURL(generatedImageObjectUrl); generatedImageObjectUrl = ''; }
-      $$('.thumb').forEach(item => item.classList.toggle('active', item === thumb)); $('#generatedImage').src = thumb.dataset.image; $('#imageCaption').textContent = thumb.dataset.caption; $('#resultMeta').textContent = 'Imagen de inspiración · 1:1'; $('#imageStatus').textContent = 'Vista de inspiración';
+      $$('.thumb').forEach(item => item.classList.toggle('active', item === thumb)); $('#generatedImage').src = thumb.dataset.image; $('#imageCaption').textContent = thumb.dataset.caption; $('#resultMeta').textContent = 'Imagen de inspiración · 1:1'; $('#imageStatus').textContent = 'Vista de inspiración'; $('#createPreviewLabel').textContent = 'IMAGEN DE EJEMPLO'; $('#generatedImage').alt = thumb.querySelector('img')?.alt || 'Imagen de inspiración';
     }));
     $('#shuffleGallery').addEventListener('click', () => { const thumbs = $$('.thumb'); thumbs.push(thumbs.shift()); thumbs.forEach(node => $('.thumbs').append(node)); });
     function useImageIdea(text) {

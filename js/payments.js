@@ -987,7 +987,7 @@ function renderModelSettings() {
       idLabel.append(idInput);
     }
     const providerLabel = document.createElement('label');
-    providerLabel.textContent = 'Modelo conversacional de OpenRouter (no TTS)';
+    providerLabel.textContent = 'Modelo conversacional de Nexus AI (no TTS)';
     const providerInput = document.createElement('input');
     providerInput.className = 'profile-name-input';
     providerInput.dataset.modelField = 'providerModel';
@@ -1082,7 +1082,7 @@ function readModelSettings() {
     const providerModel = get('providerModel').value.trim();
     const enabled = get('enabled').checked;
     if (providerModel && !/^[A-Za-z0-9._-]+\/[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(providerModel)) throw new Error(`Configura un ID de OpenRouter válido para ${id}.`);
-    if (enabled && !providerModel) throw new Error(`Configura un modelo conversacional de OpenRouter para ${id} antes de activarlo.`);
+    if (enabled && !providerModel) throw new Error(`Configura un modelo conversacional de Nexus AI para ${id} antes de activarlo.`);
     const isTextToSpeech = /^fish-audio\//i.test(providerModel) || /\/(?:tts|text-to-speech)(?:[-/:.]|$)/i.test(providerModel);
     if (enabled && isTextToSpeech) disabledVoiceModels.push(id);
     const isEnabled = enabled && !isTextToSpeech;
@@ -2500,25 +2500,47 @@ async function loadAdminPayments() {
   }
 }
 
+async function fetchAdminFeedbackBackup(path, options = {}) {
+  if (!activeUser) throw new Error('Inicia sesión para revisar el feedback.');
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${await activeUser.getIdToken()}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    cache: 'no-store',
+  });
+  let data = {};
+  try { data = await response.json(); } catch (_) {}
+  if (!response.ok) throw new Error(data.error || `Error ${response.status} del servidor de feedback.`);
+  return data;
+}
+
 async function loadAdminFeedback() {
   if (!ADMIN_EMAILS.has((activeUser?.email || '').toLowerCase())) return;
   const queue = $('#adminFeedbackQueue');
   queue.textContent = 'Cargando feedback…';
-  try {
-    const snapshot = await getDocs(query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(100)));
-    adminFeedbackItems = snapshot.docs.map(item => ({id: item.id, ...item.data()}));
-    if (!selectedFeedback || !adminFeedbackItems.some(item => item.id === selectedFeedback.id)) {
-      selectedFeedback = adminFeedbackItems[0] || null;
-    } else {
-      selectedFeedback = adminFeedbackItems.find(item => item.id === selectedFeedback.id);
-    }
-    renderAdminFeedbackQueue();
-  } catch (error) {
-    console.error('No se pudo cargar el feedback:', error);
-    queue.textContent = error.code === 'permission-denied'
-      ? 'Firestore no permite leer el feedback. Publica las reglas actualizadas.'
-      : 'No se pudo cargar el feedback.';
+  const [firestoreResult, backupResult] = await Promise.allSettled([
+    getDocs(query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(100))),
+    fetchAdminFeedbackBackup('/api/admin/feedback'),
+  ]);
+  const combined = [];
+  if (firestoreResult.status === 'fulfilled') {
+    combined.push(...firestoreResult.value.docs.map(item => ({id: item.id, ...item.data()})));
   }
+  if (backupResult.status === 'fulfilled' && Array.isArray(backupResult.value.items)) {
+    combined.push(...backupResult.value.items);
+  }
+  if (firestoreResult.status !== 'fulfilled' && backupResult.status !== 'fulfilled') {
+    console.error('No se pudo cargar el feedback:', firestoreResult.reason, backupResult.reason);
+    queue.textContent = 'No se pudo consultar el feedback. Verifica permisos de Firebase, sesión de administrador y servidor Python.';
+    return;
+  }
+  const feedbackTimestamp = item => item.createdAt?.toDate?.()?.getTime() || new Date(item.createdAt || 0).getTime() || 0;
+  adminFeedbackItems = combined.sort((a, b) => feedbackTimestamp(b) - feedbackTimestamp(a)).slice(0, 100);
+  selectedFeedback = adminFeedbackItems.find(item => item.id === selectedFeedback?.id) || adminFeedbackItems[0] || null;
+  renderAdminFeedbackQueue();
 }
 
 function renderAdminFeedbackQueue() {
@@ -2576,7 +2598,7 @@ function renderAdminFeedbackDetail(item) {
   header.append(title, status);
   const metadata = document.createElement('dl');
   metadata.className = 'payment-metadata';
-  const createdAt = item.createdAt?.toDate?.();
+  const createdAt = item.createdAt?.toDate?.() || (item.createdAt ? new Date(item.createdAt) : null);
   for (const [label, value] of [
     ['Usuario', item.displayName], ['Correo', item.email], ['Tipo', item.type], ['Área', item.area],
     ['Valoración', item.rating ? `${item.rating} / 5` : 'Sin valoración'],
@@ -2634,12 +2656,18 @@ async function saveAdminFeedbackReview(item, status, response) {
   const message = response.trim().slice(0, 1200);
   if (!message) return toast('Escribe una respuesta antes de revisar la propuesta.');
   try {
-    await updateDoc(doc(db, 'feedback', item.id), {
-      status,
-      response: message,
-      reviewedAt: serverTimestamp(),
-      reviewedBy: activeUser.email || '',
-    });
+    if (item.source === 'nexus-backup') {
+      await fetchAdminFeedbackBackup('/api/admin/feedback/review', {
+        method: 'POST', body: JSON.stringify({id: item.id, status, response: message}),
+      });
+    } else {
+      await updateDoc(doc(db, 'feedback', item.id), {
+        status,
+        response: message,
+        reviewedAt: serverTimestamp(),
+        reviewedBy: activeUser.email || '',
+      });
+    }
     toast(status === 'accepted' ? 'Propuesta aceptada y respuesta enviada.' : 'Propuesta rechazada y respuesta enviada.');
     await loadAdminFeedback();
   } catch (error) {

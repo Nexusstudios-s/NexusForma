@@ -600,3 +600,23 @@ if (view) {
   new MutationObserver(onShow).observe(view, {attributes: true, attributeFilter: ['class']});
   onShow();
 }
+
+// Contenido complementario: controles independientes, sin modificar los del mapa.
+if (view) {
+  view.addEventListener('click', event => {
+    const satellite = event.target.closest('#exploreSatelliteShortcut, #exploreEarthSatellite');
+    if (satellite) {
+      if (!started || !map) { start().then(() => { if (map) setBase('sat'); }); }
+      else setBase('sat');
+      $('.explore-stage')?.scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+    const destination = event.target.closest('[data-explore-lat][data-explore-lng]');
+    if (!destination) return;
+    const lat = Number(destination.dataset.exploreLat), lng = Number(destination.dataset.exploreLng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const go = () => { if (!map) return; map.flyTo([lat,lng], 10, {duration:1.3}); pickPoint(lat,lng); };
+    if (!started || !map) start().then(go); else go();
+    $('.explore-stage')?.scrollIntoView({behavior:'smooth',block:'center'});
+  });
+}
