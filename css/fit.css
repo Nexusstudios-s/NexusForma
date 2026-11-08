@@ -41,18 +41,121 @@
   .side-bottom { flex: none; margin-top: 10px; }
 }
 
-/* pantallas bajas: se compacta para que todo se vea sin scroll */
-@media (min-width: 761px) and (max-height: 860px) {
-  .sidebar { padding-top: 16px; }
-  .brand { padding-bottom: 14px; }
-  .nav { gap: 2px; }
-  .nav button { height: 42px; }
-  .side-bottom { gap: 8px; }
-  .usage { padding: 11px 13px; border-radius: 16px; }
-  .usage-track { margin: 9px 0 0; }
-  .usage p { display: none; }
+
+
+/* ---------- 3) tarjeta de tokens: acabado glass premium ---------- */
+.usage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 13px 14px 12px;
+  border: 1px solid rgba(190, 211, 224, .17);
+  border-radius: 17px;
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(255, 145, 91, .12), transparent 55%),
+    linear-gradient(145deg, rgba(255,255,255,.095), rgba(255,255,255,.035) 58%, rgba(120,170,180,.055));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    0 8px 24px rgba(0,0,0,.18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
-@media (min-width: 761px) and (max-height: 700px) {
-  .nav button { height: 38px; font-size: 13.5px; }
-  .usage { display: none; }
+
+.usage::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 105px;
+  height: 105px;
+  right: -48px;
+  top: -62px;
+  border-radius: 50%;
+  background: rgba(255, 151, 105, .15);
+  filter: blur(22px);
+  pointer-events: none;
+}
+
+.usage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+#sidebarPlanLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 23px;
+  padding: 3px 9px;
+  border: 1px solid rgba(206, 222, 230, .22);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.045));
+  color: rgba(235, 242, 247, .88);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .015em;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+#usageCount {
+  color: rgba(225, 235, 242, .88);
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.025em;
+  white-space: nowrap;
+}
+
+.usage-track {
+  position: relative;
+  height: 5px;
+  margin: 11px 0 1px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 999px;
+  background: rgba(220, 232, 238, .13);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.22);
+}
+
+.usage-track i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ff9a68 0%, #ffd1a0 48%, #83d9d0 100%);
+  box-shadow: 0 0 10px rgba(255, 163, 112, .35);
+  transition: width .45s cubic-bezier(.2,.75,.25,1);
+}
+
+.usage p {
+  margin: 8px 0 0;
+  color: rgba(193, 207, 216, .62);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+/* En ventanas bajas se conserva el diseño sin robar espacio al menú. */
+@media (min-width: 761px) and (max-height: 860px) {
+  .usage {
+    padding: 11px 12px 10px;
+    border-radius: 16px;
+  }
+  .usage-track { margin-top: 9px; }
+}
+
+@media (max-width: 760px) {
+  .usage {
+    border-color: rgba(190, 211, 224, .17);
+    background:
+      radial-gradient(120% 100% at 0% 0%, rgba(255, 145, 91, .12), transparent 55%),
+      linear-gradient(145deg, rgba(255,255,255,.095), rgba(255,255,255,.035));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-track i { transition: none; }
 }
