@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <div class="login-page-media" id="loginPageMedia" aria-hidden="true" hidden></div>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d13">
+  <title>Iniciar sesión · Nexus Forma</title>
+  <link rel="icon" id="siteFavicon" type="image/png" href="assets/NXF.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+  <button class="icon-btn login-theme-toggle" id="loginThemeToggle" type="button" aria-label="Cambiar tema" title="Cambiar tema"><svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg><svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg></button>
+
+  <main class="login-shell glass">
+    <section class="visual" aria-label="Estudio creativo Nexus Forma">
+      <div class="login-visual-media" id="loginVisualMedia" aria-hidden="true" hidden></div>
+      <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5 9.5 5l3 7 2-4 5.5 12H4Z"/><path d="M4 20h16"/></svg></span>Nexus Forma</div>
+      <div class="visual-bottom">
+        <div class="prompt-card" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3ZM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1 1-2.5Z"/></svg>
+          <span>Un pequeño café mediterráneo en una calle tranquila al amanecer</span>
+        </div>
+        <div class="visual-copy"><h1>Un lugar para hacer realidad tus ideas.</h1><p>Crea, edita y transforma. Tu espacio creativo te espera.</p></div>
+      </div>
+    </section>
+
+    <section class="form-side">
+      <div class="form-inner">
+        <h2 id="title">Qué bueno tenerte de vuelta</h2>
+        <p class="intro" id="intro">Inicia sesión para continuar en tu espacio creativo.</p>
+        <div class="tabs" role="tablist" aria-label="Tipo de acceso"><button class="selected" id="loginTab" type="button" role="tab" aria-selected="true">Iniciar sesión</button><button id="registerTab" type="button" role="tab" aria-selected="false">Crear cuenta</button></div>
+        <button class="google" id="googleButton" type="button"><span class="google-g" aria-hidden="true">G</span>Continuar con Google</button>
+        <div class="divider">o con tu correo</div>
+        <form id="authForm" novalidate>
+          <label class="field" id="nameField" hidden>Tu nombre<input id="displayName" name="name" autocomplete="name" maxlength="80" placeholder="Cómo te llamas"></label>
+          <label class="field">Correo electrónico<input id="email" name="email" type="email" autocomplete="email" required maxlength="254" placeholder="tu@correo.com"></label>
+          <label class="field">Contraseña<span class="password"><input id="password" name="password" type="password" autocomplete="current-password" required minlength="6" placeholder="Al menos 6 caracteres"><button class="show-password" id="togglePassword" type="button">Mostrar</button></span></label>
+          <button class="forgot" id="forgotButton" type="button">¿Olvidaste tu contraseña?</button>
+          <button class="btn primary submit" id="submitButton" type="submit">Iniciar sesión</button>
+          <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+        </form>
+        <p class="legal">El acceso se gestiona de forma segura con Firebase Authentication.</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="loading" id="loading"><div><div class="spinner"></div>Comprobando tu sesión…</div></div>
+  <script type="module" src="js/login.js"></script>
+</body>
+</html>

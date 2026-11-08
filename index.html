@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d13">
+  <title>Nexus Forma — Estudio creativo con IA</title>
+  <link rel="icon" id="siteFavicon" type="image/png" href="assets/NXF.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/personalization.css">
+  <link rel="stylesheet" href="css/home.css">
+  <link rel="stylesheet" href="css/account-tools.css">
+  <link rel="stylesheet" href="css/editor-effects.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar glass">
+      <div class="brand"><span class="brand-mark" data-brand-mark><svg data-brand-default-icon viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5 9.5 5l3 7 2-4 5.5 12H4Z"/><path d="M4 20h16"/></svg></span><span class="brand-name" data-brand-name>Nexus Forma</span></div>
+      <nav class="nav" aria-label="Navegación principal">
+        <button class="active" data-view="home" title="Inicio"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1V10Z"/></svg><span>Inicio</span></button>
+        <button data-view="chat" title="Chat IA"><svg viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2 1-4A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11h.01M12 11h.01M16 11h.01"/></svg><span>Chat IA</span></button>
+        <button data-view="create" title="Crear imagen"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg><span>Crear imagen</span></button>
+        <button data-view="edit" title="Editar foto"><svg viewBox="0 0 24 24"><path d="m14 4 6 6M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20Z"/><path d="M12 6 18 12"/></svg><span>Editar foto</span></button>
+        <button data-view="video" title="Editar vídeo"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/><path d="M7 9h5M7 12h5"/></svg><span>Editar vídeo</span></button>
+        <button data-view="agents" title="Mini agentes"><svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg><span>Mini agentes</span></button>
+        <button data-view="usage" title="Uso y tokens"><svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h17M8 15l3-4 3 2 5-7"/><path d="M16 6h3v3"/></svg><span>Uso y tokens</span></button>
+        <button data-view="library" title="Biblioteca · Pro o Premium"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22V5.5Z"/><path d="M4 6h13M8 10h8m-8 4h8"/></svg><span>Biblioteca</span><span class="pro-tag">Pro+</span></button>
+        <button data-view="plans" title="Planes"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg><span>Planes</span><span class="pro-tag">Pro</span></button>
+        <button data-view="others" title="Otros"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>Otros</span></button>
+      </nav>
+      <div class="side-bottom">
+        <div class="usage"><div class="usage-head"><span id="sidebarPlanLabel">Plan Gratis</span><span id="usageCount">0 / 500.000</span></div><div class="usage-track"><i id="usageProgress"></i></div><p id="usageCaption">Tokens de entrada y salida incluidos.</p></div>
+        <div class="profile"><span class="avatar" data-avatar>DC</span><span class="profile-copy"><div class="profile-name-row"><strong data-user-name>Tu cuenta</strong><span class="user-role-badge" data-user-badge hidden></span></div><small data-user-status>Sesión activa</small></span><button id="sidebarSignOut" class="signout-icon" type="button" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg></button></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar glass">
+        <div class="mobile-brand"><span class="brand-mark" data-brand-mark><svg data-brand-default-icon viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5 9.5 5l3 7 2-4 5.5 12H4Z"/><path d="M4 20h16"/></svg></span><span class="brand-name" data-brand-name>Nexus Forma</span></div>
+        <div class="crumbs">Espacio personal <span> / </span> <b id="crumbTitle">Crear imagen</b></div>
+        <div class="top-actions">
+          <button class="icon-btn theme-toggle" id="themeToggle" type="button" aria-label="Cambiar tema" title="Cambiar tema"><svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg><svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg></button>
+          <div class="notification-wrap"><button class="icon-btn" id="notificationButton" aria-label="Notificaciones" title="Notificaciones" type="button"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span class="notification-count" id="notificationCount" hidden>0</span></button><section class="notification-panel" id="notificationPanel" aria-label="Notificaciones" hidden><header><div class="notification-heading"><span class="notification-heading-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></span><div><strong>Notificaciones</strong><small>Actividad de tu cuenta</small></div></div><span id="notificationLabel">0 nuevas</span></header><div id="notificationList" class="notification-list"></div></section></div>
+          <button class="icon-btn developer-api-trigger" id="developerApiButton" type="button" aria-label="Nexus API" title="Nexus API"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg></button>
+          <button class="avatar small account-trigger" id="headerAccountButton" type="button" aria-label="Menú de cuenta" data-avatar>DC</button>
+          <div class="account-menu" id="accountMenu" hidden><div class="account-id"><div class="account-name-row"><strong id="accountName">Tu cuenta</strong><span class="user-role-badge" data-user-badge hidden></span></div><small id="accountEmail"></small><small id="accountSubscriptionCountdown" class="account-subscription-countdown"></small></div><button id="editProfileButton" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Editar perfil</button><button id="adminButton" type="button" hidden>Panel admin</button><button id="signOutButton" type="button"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg>Cerrar sesión</button></div>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="page-head" id="pageHead" hidden>
+          <div>
+            <div class="eyebrow"><i></i><span id="eyebrowText">Tu estudio creativo</span></div>
+            <h1 id="pageTitle">Dale forma a tus ideas</h1>
+            <p id="pageDescription">Describe lo que imaginas. Nosotros ponemos el primer píxel.</p>
+          </div>
+          <div class="head-actions"><button class="btn" id="newProject"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nuevo proyecto</button></div>
+        </div>
+
+        <section class="view active home-view" id="view-home" aria-labelledby="homeTitle">
+          <section class="home-hero">
+            <img class="home-hero-image" src="https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=1800&q=85" alt="" aria-hidden="true">
+            <div class="home-hero-shade" aria-hidden="true"></div>
+            <div class="home-hero-content">
+              <span class="home-kicker">Una mano para lo que tenés en mente</span>
+              <h1 id="homeTitle">¿Qué tenés<br><em>entre manos?</em></h1>
+              <p>Una duda, una idea para tu negocio o algo que querés aprender. Contáselo a Nexus AI y lo vamos resolviendo paso a paso.</p>
+              <div class="home-hero-actions">
+                <button class="btn primary" type="button" data-home-view="chat"><svg viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2 1-4A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11h.01M12 11h.01M16 11h.01"/></svg>Abrir un chat</button>
+                <span id="homeSessionNote">Iniciá sesión para guardar tus conversaciones.</span>
+              </div>
+              <ul class="home-trust-list" aria-label="Características">
+                <li>Gratis para empezar</li><li>100% en español</li><li>Sin instalar nada</li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="home-section" aria-labelledby="homeExamplesTitle">
+            <div class="home-section-heading">
+              <div><span class="eyebrow-label">Por ejemplo</span><h2 id="homeExamplesTitle">Empezá por donde quieras</h2></div>
+              <span>Una pregunta alcanza para arrancar.</span>
+            </div>
+            <div class="home-example-grid">
+              <button class="home-example" type="button" data-home-prompt="Quiero armar una página web para mi negocio. Ayúdame a definir las secciones y el contenido inicial."><span class="home-example-number">01</span><strong>Armar una página web</strong><span>De una idea a una estructura clara.</span></button>
+              <button class="home-example" type="button" data-home-prompt="Quiero entender un tema difícil. Explícamelo de forma sencilla, paso a paso, con un ejemplo."><span class="home-example-number">02</span><strong>Entender un tema difícil</strong><span>Una explicación a tu ritmo.</span></button>
+              <button class="home-example" type="button" data-home-prompt="Tengo una idea trabada. Hazme algunas preguntas para ayudarme a ordenarla y encontrar un próximo paso."><span class="home-example-number">03</span><strong>Destrabar una idea</strong><span>Ordenemos las piezas juntos.</span></button>
+            </div>
+          </section>
+
+          <section class="home-section" aria-labelledby="homeTodayTitle">
+            <div class="home-section-heading">
+              <div><span class="eyebrow-label">Tu espacio creativo</span><h2 id="homeTodayTitle">¿Qué querés hacer hoy?</h2></div>
+              <span>Entrá directo a lo que necesitás.</span>
+            </div>
+            <div class="home-action-grid">
+              <button class="home-action-card" type="button" data-home-view="chat"><span class="home-action-icon"><svg viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2 1-4A7.5 7.5 0 1 1 20 11.5Z"/></svg></span><strong>Empezar un chat</strong><span>Preguntá, escribí, aprendé o programá.</span><small>Abrir chat <b>↗</b></small></button>
+              <button class="home-action-card" type="button" data-home-view="plans"><span class="home-action-icon"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg></span><strong>Explorar planes</strong><span>Compará los límites y modelos disponibles.</span><small>Ver planes <b>↗</b></small></button>
+              <button class="home-action-card" type="button" data-home-view="chat" data-home-focus="history"><span class="home-action-icon"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/></svg></span><strong>Tu historial</strong><span>Volvé a conversaciones guardadas en tu cuenta.</span><small>Ver historial <b>↗</b></small></button>
+              <button class="home-action-card" type="button" data-home-target="homeAgents"><span class="home-action-icon"><svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></span><strong>Mini agentes</strong><span>Atajos para escritura, código e ideas.</span><small>Explorar agentes <b>↗</b></small></button>
+            </div>
+            <p class="home-plan-note">Gratis está pensado para consultas puntuales; Pro, para usar Nexus AI casi todos los días; y los planes avanzados, para sesiones largas y proyectos intensivos. Cada plan tiene sus propios límites y períodos de uso.</p>
+          </section>
+
+          <section class="home-section home-agents" id="homeAgents" aria-labelledby="homeAgentsTitle">
+            <div class="home-section-heading"><div><span class="eyebrow-label">Atajos para empezar</span><h2 id="homeAgentsTitle">Mini agentes</h2></div><span>Elegí una tarea y seguí desde el chat.</span></div>
+            <div class="home-agent-list">
+              <button type="button" data-home-prompt="Actúa como mi asistente de escritura en español. Ayúdame a redactar y mejorar un texto; primero pregúntame el objetivo y el tono."><strong>Escritura</strong><span>Redactar y pulir textos</span><b>↗</b></button>
+              <button type="button" data-home-prompt="Actúa como mi asistente de programación. Ayúdame a resolver mi problema paso a paso y explícame las decisiones con claridad."><strong>Código</strong><span>Entender y resolver un problema</span><b>↗</b></button>
+              <button type="button" data-home-prompt="Actúa como compañero de ideas. Ayúdame a explorar opciones para mi proyecto y a elegir un próximo paso concreto."><strong>Ideas</strong><span>Explorar posibilidades</span><b>↗</b></button>
+            </div>
+          </section>
+
+          <section class="home-section home-community" aria-labelledby="homeCommunityTitle">
+            <div class="home-section-heading"><div><span class="eyebrow-label">Comunidad Nexus</span><h2 id="homeCommunityTitle">Encontrémonos en Discord</h2></div><span>Ideas, creación y comunidad en un mismo lugar.</span></div>
+            <div class="community-grid">
+              <a class="community-card community-forge" href="https://discord.gg/nZ42azXrTQ" target="_blank" rel="noopener noreferrer" aria-label="Unirse al Discord de Nexus Forge">
+                <span class="community-art"><img src="assets/sv/h.png" alt="Nexus Forge"></span>
+                <span class="community-card-copy"><strong>Nexus Forge</strong><small>Explora y crea junto a la comunidad.</small><b>Unirme al servidor <span aria-hidden="true">↗</span></b></span>
+              </a>
+              <article class="community-card community-studios">
+                <span class="community-art"><img src="assets/sv/v.png" alt="Nexus Studios"></span>
+                <div class="community-card-copy"><strong>Nexus Studios</strong><small>Conecta con el estudio y sus proyectos.</small><div class="community-links"><a href="https://discord.gg/kQ8pxqmhfS" target="_blank" rel="noopener noreferrer">Discord <span aria-hidden="true">↗</span></a><a href="https://www.instagram.com/nexus_studiosx/" target="_blank" rel="noopener noreferrer" aria-label="Instagram de Nexus Studios"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></svg>Instagram <span aria-hidden="true">↗</span></a></div></div>
+              </article>
+              <a class="community-card community-music" href="https://discord.gg/p2bQMgcQ3s" target="_blank" rel="noopener noreferrer" aria-label="Unirse al Discord de NexusMusic">
+                <span class="community-art"><img src="assets/sv/b.png" alt="NexusMusic"></span>
+                <span class="community-card-copy"><strong>NexusMusic</strong><small>Descubre música y comparte tus ideas.</small><b>Unirme al servidor <span aria-hidden="true">↗</span></b></span>
+              </a>
+            </div>
+          </section>
+
+          <footer class="home-footer">
+            <div><strong data-brand-name>Nexus Forma</strong><span>Un asistente creativo en español para pensar, escribir, aprender y crear.</span></div>
+            <nav aria-label="Accesos rápidos"><button type="button" data-home-view="chat">Chat</button><button type="button" data-home-view="plans">Planes</button><button type="button" data-home-target="homeAgents">Mini agentes</button><button type="button" data-home-view="chat" data-home-focus="history">Historial y uso</button></nav>
+            <small>© 2026 Nexus Forma</small>
+          </footer>
+        </section>
+
+        <!-- ===== Crear imagen ===== -->
+        <section class="view" id="view-create">
+          <div class="generator-grid">
+            <div class="panel controls">
+              <h2 class="panel-title">Generador de imágenes</h2>
+              <p class="panel-sub">Convierte una idea en una imagen original.</p>
+              <label class="field-label" for="prompt">Tu descripción <span id="charCount">0 / 500</span></label>
+              <textarea class="prompt" id="prompt" maxlength="500" placeholder="Ej. Una casa minimalista junto al mar al atardecer, fotografía editorial…"></textarea>
+              <div class="prompt-tools"><button class="tiny-action" id="enhancePrompt"><svg viewBox="0 0 24 24"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3ZM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1 1-2.5Z"/></svg>Mejorar texto</button><button class="tiny-action muted" id="clearPrompt">Limpiar</button></div>
+              <div class="field-label">Estilo visual</div>
+              <div class="chips" id="styles"><button class="chip selected" data-style="Fotografía">Fotografía</button><button class="chip" data-style="Cinematográfico">Cine</button><button class="chip" data-style="Ilustración editorial">Ilustración</button><button class="chip" data-style="3D artístico">3D</button><button class="chip" data-style="Acuarela">Acuarela</button><button class="chip" data-style="Minimalista">Minimalista</button><button class="chip" data-style="Anime">Anime</button><button class="chip" data-style="Producto editorial">Producto</button></div>
+              <details class="generator-options">
+                <summary>Más ajustes de imagen</summary>
+                <div class="generator-options-grid">
+                  <label class="generator-option" for="imageLighting">Iluminación<select id="imageLighting"><option value="natural">Natural</option><option value="golden">Hora dorada</option><option value="softbox">Estudio suave</option><option value="dramatic">Dramática</option><option value="neon">Neón</option></select></label>
+                  <label class="generator-option" for="imageComposition">Encuadre<select id="imageComposition"><option value="balanced">Equilibrado</option><option value="wide">Plano amplio</option><option value="closeup">Primer plano</option><option value="topdown">Vista cenital</option><option value="thirds">Regla de tercios</option></select></label>
+                  <label class="generator-option" for="imagePalette">Paleta<select id="imagePalette"><option value="balanced">Natural</option><option value="warm">Cálida</option><option value="cool">Fría</option><option value="pastel">Pastel</option><option value="mono">Monocromática</option></select></label>
+                  <label class="generator-option" for="imageAvoid">Evitar<input id="imageAvoid" type="text" maxlength="160" placeholder="Ej. texto, marcas de agua"></label>
+                  <label class="generator-option generator-seed" for="imageSeed">Semilla<input id="imageSeed" type="number" min="0" max="999999" step="1" placeholder="Aleatoria"></label>
+                  <button class="tiny-action generator-random-seed" id="randomizeImageSeed" type="button">Nueva variación</button>
+                </div>
+              </details>
+              <div class="field-label">Formato <span>Proporción</span></div>
+              <div class="select-row"><div class="select-wrap"><select id="quality" aria-label="Acabado de la imagen"><option value="natural">Natural</option><option value="vivid">Vibrante</option><option value="soft">Suave</option></select></div><div class="ratio-set" id="ratios" role="group" aria-label="Proporción"><button class="selected" data-ratio="1:1">1:1</button><button data-ratio="4:3">4:3</button><button data-ratio="3:4">3:4</button></div></div>
+              <button class="btn primary wide" id="generate"><svg viewBox="0 0 24 24"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3ZM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1 1-2.5Z"/></svg><span>Generar imagen</span></button>
+              <div class="api-note"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span>Generación gratis. Límite público: 1 imagen cada 45 s por IP. Las imágenes pueden incluir su marca.</span></div>
+            </div>
+
+            <div class="panel preview-panel">
+              <div class="preview-head"><strong>Vista previa</strong><span id="resultMeta">Imagen de muestra · 1:1</span></div>
+              <div class="preview-stage">
+                <img class="image-result" id="generatedImage" alt="Vista previa de imagen generada" src="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1200&q=85">
+                <div class="preview-empty" id="previewEmpty"><div><div class="loader"></div><strong id="loadingTitle">Creando tu imagen</strong><span id="loadingDetail">Puede tardar unos segundos.</span></div></div>
+                <div class="preview-overlay"><span id="imageCaption">Luz de montaña · paisaje</span><div class="overlay-actions"><button class="overlay-btn" id="openImage" aria-label="Abrir imagen" title="Abrir imagen"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/></svg></button><button class="overlay-btn" id="downloadImage" aria-label="Descargar imagen" title="Descargar imagen"><svg viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3"/></svg></button></div></div>
+              </div>
+              <div class="preview-foot"><span><i class="status-dot"></i><span id="imageStatus">Listo para crear</span></span><span>Vista previa</span></div>
+              <div class="mini-gallery"><div class="gallery-head"><span>Inspiración</span><button id="shuffleGallery">Ver más</button></div><div class="thumbs"><button class="thumb active" data-image="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1200&q=85" data-caption="Luz de montaña · paisaje"><img src="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=160&q=65" alt="Lago entre montañas"></button><button class="thumb" data-image="https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1200&q=85" data-caption="Costa en calma · naturaleza"><img src="https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=160&q=65" alt="Olas junto a la costa"></button><button class="thumb" data-image="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=85" data-caption="Horizonte abierto · viaje"><img src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=160&q=65" alt="Paisaje abierto al atardecer"></button><button class="thumb" data-image="https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=85" data-caption="Desierto dorado · aventura"><img src="https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=160&q=65" alt="Dunas de arena"></button></div></div>
+            </div>
+          </div>
+
+          <div class="recent">
+            <div class="section-title"><h2>Un poco de inspiración</h2><button id="tryIdea">Probar una idea</button></div>
+            <div class="recent-row">
+              <article class="recent-item"><img src="https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?auto=format&fit=crop&w=600&q=75" alt="Interior cálido de estudio"><div><strong>Un rincón para crear</strong><span>Interior · Editorial</span></div></article>
+              <article class="recent-item"><img src="https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=600&q=75" alt="Montañas con luz de tarde"><div><strong>Donde empieza el día</strong><span>Naturaleza · Cine</span></div></article>
+              <article class="recent-item"><img src="https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?auto=format&fit=crop&w=600&q=75" alt="Luz cálida entre las nubes"><div><strong>Hora dorada</strong><span>Fotografía · Paisaje</span></div></article>
+              <article class="recent-item"><img src="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=600&q=75" alt="Montañas reflejadas en un lago"><div><strong>Silencio alpino</strong><span>Viaje · Natural</span></div></article>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Editar foto ===== -->
+        <section class="view" id="view-edit">
+          <div class="tool-layout">
+            <div class="panel editor-stage">
+              <div class="upload-box" id="imageDrop"><div><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><h3>Tu lienzo empieza aquí</h3><p>Sube una imagen para ajustar su luz, capas y texto.</p><button class="btn" id="chooseImage">Elegir una imagen</button><input class="hidden-file" id="imageFile" type="file" accept="image/*"></div></div>
+              <div class="editor-canvas-preview" id="editorCanvasPreview" hidden><canvas id="editorPreviewCanvas" aria-label="Vista previa de la composición"></canvas><canvas id="watermarkMaskCanvas" class="watermark-mask-canvas" aria-label="Máscara pintada para limpiar la imagen" hidden></canvas><img class="editor-overlay-image" id="editorOverlayImage" alt="Capa de imagen añadida" hidden><div class="editor-overlay-text" id="editorOverlayText" hidden></div></div>
+            </div>
+            <div class="panel edit-controls">
+              <h2 class="panel-title">Editor de foto</h2>
+              <p class="panel-sub">Capas y acabados locales, listos para exportar.</p>
+              <div class="slider-row"><div class="slider-head"><label for="brightness">Brillo</label><span id="brightnessValue">100%</span></div><input id="brightness" type="range" min="50" max="150" value="100"></div>
+              <div class="slider-row"><div class="slider-head"><label for="contrast">Contraste</label><span id="contrastValue">100%</span></div><input id="contrast" type="range" min="50" max="150" value="100"></div>
+              <div class="slider-row"><div class="slider-head"><label for="saturation">Saturación</label><span id="saturationValue">100%</span></div><input id="saturation" type="range" min="0" max="180" value="100"></div>
+              <label class="editor-control" for="editorEffect">Efecto de foto<select id="editorEffect"><option value="none">Original</option><option value="film">Película suave</option><option value="mono">Blanco y negro</option><option value="warm">Cálido</option><option value="cool">Frío</option><option value="fade">Desvanecido</option><option value="cinematic" data-editor-premium>Color cine · Pro</option><option value="matte" data-editor-premium>Mate editorial · Pro</option><option value="duotone" data-editor-premium>Dúo tonal · Pro</option><option value="glow" data-editor-premium>Luz suave · Premium</option><option value="grain" data-editor-premium>Grano de película · Premium</option></select></label><p class="editor-premium-note" id="editorPremiumNote" hidden>Los acabados y fuentes avanzados requieren Pro o Premium.</p>
+              <section class="editor-tool-section" aria-labelledby="editorLayersTitle"><div class="editor-tool-title"><strong id="editorLayersTitle">Capas</strong><span>Combina otra imagen</span></div><button class="btn editor-add-layer" id="addOverlayImage" type="button">Añadir otra foto</button><input class="hidden-file" id="overlayImageFile" type="file" accept="image/png,image/jpeg,image/webp"><div class="editor-layer-controls" id="editorLayerControls" hidden><label class="editor-control" for="overlayScale">Tamaño de la capa<input id="overlayScale" type="range" min="15" max="85" value="38"><span id="overlayScaleValue">38%</span></label><label class="editor-control" for="overlayPosition">Posición<select id="overlayPosition"><option value="bottom-right">Abajo a la derecha</option><option value="bottom-left">Abajo a la izquierda</option><option value="top-right">Arriba a la derecha</option><option value="top-left">Arriba a la izquierda</option><option value="center">Centro</option></select></label><button class="editor-text-remove" id="removeOverlayImage" type="button">Quitar capa</button></div></section>
+              <section class="editor-tool-section" aria-labelledby="editorTextTitle"><div class="editor-tool-title"><strong id="editorTextTitle">Texto</strong><span>Tipografía y tratamiento</span></div><label class="editor-control" for="editorText">Contenido<textarea id="editorText" maxlength="160" rows="2" placeholder="Escribe sobre tu foto"></textarea></label><div class="editor-text-grid"><label class="editor-control" for="editorFont">Tipografía<select id="editorFont"><option value="instrument">Instrument Sans</option><option value="bricolage">Bricolage Grotesque</option><option value="serif">Serif editorial</option><option value="mono">Monoespaciada</option><option value="impact">Impacto</option><option value="playfair" data-editor-premium>Playfair Display · Pro</option><option value="space" data-editor-premium>Space Grotesk · Pro</option><option value="cormorant" data-editor-premium>Cormorant · Premium</option><option value="bebas" data-editor-premium>Bebas Neue · Premium</option><option value="dmmono" data-editor-premium>DM Mono · Premium</option></select></label><label class="editor-control" for="editorTextPosition">Posición<select id="editorTextPosition"><option value="bottom">Abajo</option><option value="top">Arriba</option><option value="center">Centro</option></select></label><label class="editor-control" for="editorTextSize">Tamaño<input id="editorTextSize" type="range" min="18" max="96" value="48"></label><label class="editor-control" for="editorTextColor">Color<input id="editorTextColor" type="color" value="#ffffff"></label></div><div class="editor-effect-set" role="group" aria-label="Efecto del texto"><button type="button" class="editor-effect-chip selected" data-text-effect="clean">Limpio</button><button type="button" class="editor-effect-chip" data-text-effect="outline">Contorno</button><button type="button" class="editor-effect-chip" data-text-effect="neon">Neón</button><button type="button" class="editor-effect-chip" data-text-effect="label">Etiqueta</button></div></section>
+              <section class="editor-tool-section editor-background-tool" aria-labelledby="editorBackgroundTitle"><div class="editor-tool-title"><strong id="editorBackgroundTitle">Fondo liso</strong><span>Transparencia por color</span></div><p>Funciona mejor con fondos verdes o de un solo color.</p><div class="editor-background-row"><button class="btn" id="sampleBackgroundColor" type="button">Tomar color de la foto</button><input id="backgroundColor" type="color" value="#36a867" aria-label="Color que se eliminará"></div><label class="editor-toggle"><input id="removeBackgroundEnabled" type="checkbox"><span>Aplicar transparencia al color elegido</span></label><label class="editor-control" for="backgroundTolerance">Tolerancia<span id="backgroundToleranceValue">36%</span><input id="backgroundTolerance" type="range" min="0" max="100" value="36"></label></section>
+              <section class="editor-tool-section editor-cleanup-tool" aria-labelledby="photoCleanupTitle"><div class="editor-tool-title"><strong id="photoCleanupTitle">Quitar marca de agua</strong><span>Pro · Premium</span></div><p>Pinta sobre una marca propia o una marca que tengas permiso para quitar. No selecciones contenido ajeno.</p><label class="editor-toggle"><input id="confirmPhotoRights" type="checkbox"><span>Confirmo que tengo derechos o permiso para modificar esta imagen.</span></label><div class="editor-cleanup-actions"><button class="btn" id="toggleWatermarkBrush" type="button" aria-pressed="false" disabled>Marcar zona</button><button class="btn" id="clearWatermarkMask" type="button" disabled>Limpiar máscara</button></div><div class="editor-text-grid"><label class="editor-control" for="watermarkMaskMode">Herramienta<select id="watermarkMaskMode"><option value="paint">Pincel</option><option value="erase">Borrador</option></select></label><label class="editor-control" for="watermarkBrushSize">Tamaño del pincel<span id="watermarkBrushSizeValue">32 px</span><input id="watermarkBrushSize" type="range" min="8" max="100" value="32"></label><label class="editor-control" for="photoCleanupMode">Calidad<select id="photoCleanupMode"><option value="fast">Rápida</option><option value="quality">Alta</option></select></label></div><button class="btn primary" id="removeOwnWatermark" type="button" disabled>Quitar marca de agua</button><small class="editor-cleanup-usage" id="photoCleanupUsage" role="status" aria-live="polite">Comprobando disponibilidad…</small></section>
+              <div class="edit-hint">La foto y la máscara se envían a Clipdrop Cleanup para procesar la selección.</div>
+              <div class="editor-actions"><button class="btn" id="resetEdits">Restablecer</button><button class="btn" id="saveEditedImage" type="button">Guardar en biblioteca</button><button class="btn primary" id="exportImage">Descargar</button></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Editar vídeo ===== -->
+        <section class="view" id="view-video">
+          <div class="panel video-panel">
+            <div class="video-stage">
+              <div class="video-preview" id="videoPreview" hidden>
+                <video id="videoPlayer" controls playsinline></video>
+                <canvas class="video-overlay-preview" id="videoOverlayCanvas" aria-hidden="true"></canvas>
+                <button class="video-drag-target video-sticker-drag-target" id="videoStickerDragTarget" type="button" aria-label="Arrastrar capa" title="Arrastrar capa" hidden></button>
+                <button class="video-drag-target video-text-drag-target" id="videoTextDragTarget" type="button" aria-label="Arrastrar texto" title="Arrastrar texto" hidden></button>
+              </div>
+              <div class="video-placeholder" id="videoPlaceholder"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3M8 9l4 3-4 3V9Z"/></svg><h3>Tu próximo corte empieza aquí</h3><p>Sube un vídeo para seleccionar el fragmento que quieres conservar.</p><button class="btn" id="chooseVideo">Elegir vídeo</button><input class="hidden-file" id="videoFile" type="file" accept="video/*"></div>
+            </div>
+            <div class="video-controls">
+              <div class="trim-head"><span>Recortar clip</span><span id="videoDuration">Duración —</span></div>
+              <div class="trim-track"><i></i></div>
+              <div class="times"><span id="startRead">00:00</span><span id="endRead">00:00</span></div>
+              <div class="time-inputs"><label>Inicio (seg)<input id="trimStart" type="number" min="0" value="0" step="0.1"></label><label>Final (seg)<input id="trimEnd" type="number" min="0" value="0" step="0.1"></label></div>
+              <div class="video-tool-grid">
+                <section class="video-tool-section" aria-labelledby="videoEffectTitle">
+                  <div class="video-tool-heading"><strong id="videoEffectTitle">Efectos</strong><span>Color y textura</span></div>
+                  <label class="editor-control" for="videoEffect">Tratamiento<select id="videoEffect"><option value="none">Original</option><option value="film">Película suave</option><option value="mono">Blanco y negro</option><option value="warm">Cálido</option><option value="cool">Frío</option><option value="fade">Desvanecido</option><option value="cinematic" data-video-premium>Color cine · Pro</option><option value="matte" data-video-premium>Mate editorial · Pro</option><option value="duotone" data-video-premium>Dúo tonal · Pro</option><option value="dream" data-video-premium>Sueño suave · Pro</option><option value="noir" data-video-premium>Noir · Pro</option><option value="glow" data-video-premium>Luz suave · Premium</option><option value="grain" data-video-premium>Grano de película · Premium</option><option value="glitch" data-video-premium>Interferencia · Premium</option><option value="vhs" data-video-premium>VHS · Premium</option><option value="chromatic" data-video-premium>Aberración cromática · Premium</option><option value="pop" data-video-premium>Pop · Premium</option><option value="negative" data-video-premium>Negativo · Premium</option><option value="solarize" data-video-premium>Solarizado · Premium</option></select></label>
+                </section>
+                <section class="video-tool-section" aria-labelledby="videoTextTitle">
+                  <div class="video-tool-heading"><strong id="videoTextTitle">Texto</strong><span>Fuente y tratamiento</span></div>
+                  <label class="editor-control" for="videoText">Contenido<textarea id="videoText" maxlength="160" rows="2" placeholder="Escribe sobre tu vídeo"></textarea></label>
+                  <div class="video-tool-fields">
+                    <label class="editor-control" for="videoFont">Tipografía<select id="videoFont"><option value="instrument">Instrument Sans</option><option value="bricolage">Bricolage Grotesque</option><option value="serif">Serif editorial</option><option value="mono">Monoespaciada</option><option value="impact">Impacto</option><option value="playfair" data-video-premium>Playfair Display · Pro</option><option value="space" data-video-premium>Space Grotesk · Pro</option><option value="cormorant" data-video-premium>Cormorant · Premium</option><option value="bebas" data-video-premium>Bebas Neue · Premium</option><option value="dmmono" data-video-premium>DM Mono · Premium</option></select></label>
+                    <label class="editor-control" for="videoTextPosition">Posición<select id="videoTextPosition"><option value="bottom">Abajo</option><option value="top">Arriba</option><option value="center">Centro</option><option value="custom">Personalizada</option></select></label>
+                    <label class="editor-control" for="videoTextSize">Tamaño<span id="videoTextSizeValue">48 px</span><input id="videoTextSize" type="range" min="18" max="96" value="48"></label>
+                    <label class="editor-control" for="videoTextColor">Color<input id="videoTextColor" type="color" value="#ffffff"></label>
+                    <label class="editor-control" for="videoTextEffect">Tratamiento<select id="videoTextEffect"><option value="clean">Limpio</option><option value="outline">Contorno</option><option value="neon">Neón</option><option value="label">Etiqueta</option><option value="shadow">Sombra</option><option value="gradient" data-video-premium>Gradiente · Pro</option><option value="glitch" data-video-premium>Glitch · Pro</option><option value="retro" data-video-premium>Retro · Premium</option></select></label>
+                  </div>
+                </section>
+                <section class="video-tool-section" aria-labelledby="videoOverlayTitle">
+                  <div class="video-tool-heading"><strong id="videoOverlayTitle">Capas</strong><span>Stickers e imágenes</span></div>
+                  <label class="editor-control" for="videoOverlayAsset">Recursos<select id="videoOverlayAsset"><option value="">Sin recurso</option><option value="/assets/ass/like.png">Like</option><option value="/assets/ass/suscribe1.png">Suscríbete</option><option value="/assets/ass/glitch.png">Glitch a pantalla completa</option><option value="/assets/ass/vid1.mp4">Clip animado</option></select></label>
+                  <div class="video-tool-actions"><button class="btn" id="chooseVideoOverlay" type="button">Añadir imagen o clip</button><button class="btn" id="removeVideoOverlay" type="button" disabled>Quitar capa</button></div>
+                  <input class="hidden-file" id="videoOverlayFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm">
+                  <div class="video-tool-fields">
+                    <label class="editor-control" for="videoOverlayScale">Tamaño<span id="videoOverlayScaleValue">28%</span><input id="videoOverlayScale" type="range" min="10" max="65" value="28"></label>
+                    <label class="editor-control" for="videoOverlayPosition">Posición<select id="videoOverlayPosition"><option value="top-right">Arriba a la derecha</option><option value="top-left">Arriba a la izquierda</option><option value="bottom-right">Abajo a la derecha</option><option value="bottom-left">Abajo a la izquierda</option><option value="center">Centro</option><option value="custom">Personalizada</option></select></label>
+                  </div>
+                </section>
+              </div>
+              <small class="video-premium-note" id="videoPremiumNote" hidden>Funciones avanzadas · Pro y Premium</small>
+              <div class="video-actions"><span class="video-note">El vídeo editado se procesa en tu navegador y se exporta como WebM. Guardar en la biblioteca requiere Pro o Premium y un clip pequeño.</span><div class="video-action-buttons"><button class="btn" id="saveVideoLibrary" type="button" disabled>Guardar en biblioteca</button><button class="btn primary" id="exportVideo" type="button" disabled><svg viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3"/></svg>Exportar vídeo editado</button></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view mini-agents-view" id="view-agents" aria-labelledby="miniAgentsTitle">
+          <div class="mini-agents-heading"><div><span class="eyebrow-label">Asistentes a tu manera</span><h1 id="miniAgentsTitle">Mini agentes</h1><p>Creá un asistente para una tarea y volvé a usarlo cuando quieras.</p></div></div>
+          <section class="mini-agent-plan-note"><div><span class="mini-agent-sparkle">✦</span><div><strong>Creá tus propios mini agentes con Pro o Premium.</strong><p>El plan Gratis permite usar los tres modelos con sus límites, pero no crear mini agentes personalizados.</p></div></div><div class="mini-agent-free-models" aria-label="Modelos disponibles en Gratis"><span>Nexus-St</span><span>Nexus-Pro</span><span>Nexus-Basic</span></div></section>
+          <section id="miniAgentCreateSection" class="mini-agent-create-section" hidden>
+            <form id="miniAgentForm" class="mini-agent-form">
+              <div class="mini-agent-form-heading"><div><span class="eyebrow-label">Personalizado</span><h2>Crear un mini agente</h2></div><span>Pro / Premium</span></div>
+              <label class="profile-label" for="miniAgentName">Nombre</label>
+              <input class="profile-name-input" id="miniAgentName" maxlength="48" placeholder="Ej. Asistente de marca" required>
+              <label class="profile-label" for="miniAgentInstructions">Instrucciones del agente</label>
+              <textarea class="profile-name-input" id="miniAgentInstructions" maxlength="1800" rows="5" placeholder="Define su especialidad, tono y cómo debe ayudarte…" required></textarea>
+              <label class="profile-label" for="miniAgentModel">Modelo</label>
+              <select class="profile-name-input" id="miniAgentModel"><option value="Nexus-St">Nexus-St</option><option value="Nexus-Pro">Nexus-Pro</option><option value="Nexus-Basic">Nexus-Basic</option></select>
+              <div class="mini-agent-form-footer"><p id="miniAgentFeedback" role="status" aria-live="polite"></p><div class="mini-agent-form-actions"><button class="btn" id="cancelMiniAgentEdit" type="button" hidden>Cancelar</button><button class="btn primary" type="submit">Guardar agente</button></div></div>
+            </form>
+          </section>
+          <section class="mini-agent-library" aria-labelledby="miniAgentLibraryTitle"><div class="mini-agent-library-head"><h2 id="miniAgentLibraryTitle">Tus agentes</h2><span id="miniAgentCount">0</span></div><div class="mini-agent-list" id="miniAgentList"><p class="history-loading">Tus mini agentes aparecerán aquí.</p></div></section>
+        </section>
+
+        <section class="view usage-view" id="view-usage" aria-labelledby="usagePageTitle">
+          <div class="usage-page-heading"><div><span class="eyebrow-label">Tu cuenta</span><h1 id="usagePageTitle">Uso y tokens</h1><p>Consumo real registrado en el backend, con tokens de entrada y salida.</p></div></div>
+          <form id="usageRangeForm" class="usage-range-form">
+            <span>Período seleccionable</span>
+            <label for="usageFrom">Desde<input id="usageFrom" type="date" required></label>
+            <label for="usageTo">Hasta<input id="usageTo" type="date" required></label>
+            <button class="btn primary" type="submit">Consultar período</button>
+          </form>
+          <section class="usage-period-panel" aria-labelledby="usagePeriodTitle">
+            <div class="usage-period-head"><div><span class="eyebrow-label" id="usagePeriodTitle">Cuota mensual consumida</span><strong id="usagePeriodTotal">0 / —</strong></div><span id="usagePeriodPercent">0% usado</span></div>
+            <div class="usage-period-track"><i id="usagePeriodProgress"></i></div>
+            <p id="usagePeriodSummary">Selecciona un período para consultar tu consumo.</p>
+          </section>
+          <section class="usage-metrics" aria-label="Detalle del consumo">
+            <article><span>Tokens de entrada</span><strong id="usagePromptTokens">0</strong><small>Mensajes enviados al modelo</small></article>
+            <article><span>Tokens de salida</span><strong id="usageCompletionTokens">0</strong><small>Respuestas generadas</small></article>
+            <article><span>Mensajes</span><strong id="usageMessageCount">0</strong><small>Solicitudes completadas</small></article>
+            <article><span>Conversaciones</span><strong id="usageConversationCount">0</strong><small>En el período seleccionado</small></article>
+          </section>
+          <section class="token-purchase-section"><div class="home-section-heading"><div><span class="eyebrow-label">Recarga</span><h2>Comprar tokens</h2></div><span>Los tokens se acreditan al aprobar el pago.</span></div><div class="token-packages-grid" id="tokenPackagesGrid"><p class="history-loading">No hay paquetes disponibles por el momento.</p></div></section>
+          <p class="usage-page-note">La cuota suma tokens de entrada y salida. Las recargas se aplican al ciclo de uso actual.</p>
+        </section>
+
+        <section class="view library-view" id="view-library" aria-labelledby="pageTitle">
+          <div class="library-toolbar"><span>Imágenes y vídeos de este estudio</span><span id="imageLibraryCount">0 elementos</span></div>
+          <div class="generated-image-grid" id="generatedImageGrid" aria-live="polite"><p class="history-loading">Tus creaciones aparecerán aquí.</p></div>
+        </section>
+
+        <!-- ===== Planes ===== -->
+        <section class="view" id="view-plans">
+          <div class="plan-grid" id="planGrid">
+            <article class="panel plan" data-plan-card="free"><span class="plan-acquired-state" hidden>Adquirido</span><h3>Gratis</h3><p>Empieza a crear sin tarjeta.</p><div class="price">$0 <small>/ siempre</small></div><ul><li>500.000 tokens por ciclo mensual</li><li>Retoque de foto y recorte local</li><li>Historial del chat por 5 días</li><li>Modelos gratis de Nexus</li></ul><button class="btn" id="currentPlan" type="button" disabled>Plan actual</button></article>
+            <article class="panel plan featured" data-plan-card="pro"><span class="plan-acquired-state" hidden>Adquirido</span><span class="plan-badge">12 meses</span><h3>Pro</h3><p>Más capacidad para trabajar a diario.</p><div class="price">$90 <small>/ año</small></div><ul><li>2.000.000 tokens, se renuevan cada año</li><li>Modelos premium incluidos</li><li>Exportación de alta resolución</li><li>Historial ampliado</li></ul><button class="btn primary" data-buy-plan="pro" data-plan-name="Pro" data-duration-days="365" data-amount="90 USD" type="button">Comprar Ahora</button></article>
+            <article class="panel plan" data-plan-card="studio"><span class="plan-acquired-state" hidden>Adquirido</span><span class="plan-badge">30 días</span><h3>Estudio</h3><p>Un espacio compartido para crear en equipo.</p><div class="price">$24 <small>/ mes</small></div><ul><li>5.000.000 tokens por ciclo mensual</li><li>Modelos premium incluidos</li><li>Hasta 5 miembros</li><li>Tokens compartidos por equipo</li></ul><button class="btn" id="studioPlan" data-buy-plan="studio" data-plan-name="Estudio" data-duration-days="30" data-amount="24 USD" type="button">Enviar comprobante</button></article>
+            <article class="panel plan" data-plan-card="premium"><span class="plan-acquired-state" hidden>Adquirido</span><span class="plan-badge">30 días</span><h3>Premium</h3><p>Acceso a todos los modelos premium por un periodo fijo.</p><div class="price">$19 <small>/ 30 días</small></div><ul><li>1.500.000 tokens por ciclo</li><li>Nexus-Premium, SST, Sonet y Astra</li><li>Ideal para uso intensivo</li><li>Se puede renovar fácilmente</li></ul><button class="btn primary" id="premiumPlan" data-buy-plan="premium" data-plan-name="Premium" data-duration-days="30" data-amount="19 USD" type="button">Enviar comprobante</button></article>
+            <article class="panel plan" data-plan-card="rental"><span class="plan-acquired-state" hidden>Adquirido</span><span class="plan-badge">Alquiler</span><h3>Alquiler</h3><p>Compra solo los modelos que quieras por días o por temporada.</p><div class="price">$6 <small>/ 7 días</small></div><ul><li>2.000.000 tokens por cada modelo seleccionado</li><li>Modelos premium a la carta</li><li>Sin suscripción anual</li><li>Flexible y sin permanencia</li></ul><button class="btn" id="rentalPlan" data-buy-plan="rental" data-plan-name="Alquiler" data-duration-days="7" data-amount="6 USD" type="button">Enviar comprobante</button></article>
+            <article class="panel plan" data-plan-card="model-pack"><span class="plan-acquired-state" hidden>Adquirido</span><span class="plan-badge">90 días</span><h3>Modelos premium</h3><p>Acceso por días a los modelos que elijas.</p><div class="price">$39 <small>/ 90 días</small></div><ul><li>2.000.000 tokens para cada modelo</li><li>Elige Nexus-Premium, SST, Sonet o Astra</li><li>Flexibilidad total</li><li>Se renueva al comprar de nuevo</li></ul><button class="btn" id="modelPackPlan" data-buy-plan="model-pack" data-plan-name="Modelos premium" data-duration-days="90" data-amount="39 USD" type="button">Enviar comprobante</button></article>
+          </div>
+          <section class="plan-comparison-section"><div class="payment-section-heading"><div><span class="eyebrow-label">Comparativa</span><h2>Todos los planes, lado a lado</h2></div><span>Funciones, duración y tokens por ciclo</span></div><div class="plan-comparison-scroll"><table class="plan-comparison-table" id="planComparisonTable"></table></div></section>
+          <section class="payment-methods-section"><div class="payment-section-heading"><div><span class="eyebrow-label">Pago manual</span><h2>Métodos disponibles</h2></div><span>Confirma tu compra con un comprobante</span></div><div class="payment-methods-list" id="paymentMethodsList"><span class="history-loading">Cargando métodos de pago…</span></div></section>
+          <p class="plan-caption">Después de enviar el comprobante, el acceso se activa cuando el administrador confirme el pago.</p>
+        </section>
+
+        <section class="view others-view" id="view-others" aria-labelledby="pageTitle">
+          <section class="others-nexus-plus" aria-labelledby="nexusPlusTitle">
+            <div class="others-nexus-plus-copy">
+              <span class="eyebrow-label">Ecosistema Nexus</span>
+              <h2 id="nexusPlusTitle">Nexus+</h2>
+              <p>Una membresía para acceder a beneficios en Nexus Forge, NexusMusic y otros sitios del ecosistema Nexus.</p>
+            </div>
+            <a class="btn primary" href="https://www.nexusforgex.xyz/nexusplus" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>Comprar Nexus+</a>
+          </section>
+          <section class="others-sites" aria-label="Sitios del ecosistema Nexus">
+            <a class="others-site-link" href="https://www.nexusforgex.xyz/" target="_blank" rel="noopener noreferrer"><span><strong>Nexus Forge</strong><small>Explora el ecosistema Nexus</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6-9 9"/><path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/></svg></a>
+            <a class="others-site-link" href="https://nexusmusicx.vercel.app/" target="_blank" rel="noopener noreferrer"><span><strong>NexusMusic</strong><small>Música dentro del ecosistema Nexus</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6m0-6-9 9"/><path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/></svg></a>
+          </section>
+          <section class="others-discord" aria-labelledby="othersDiscordTitle">
+            <div><span class="eyebrow-label">Comunidad</span><h2 id="othersDiscordTitle">Discord</h2><p>Entra a los espacios de Nexus desde el navegador.</p><small class="others-discord-status" id="discordPresenceStatus" role="status" aria-live="polite">Presencia aproximada al abrir esta sección.</small></div>
+            <div class="others-discord-links">
+              <a class="others-discord-link" data-discord-code="nZ42azXrTQ" href="https://discord.gg/nZ42azXrTQ" target="_blank" rel="noopener noreferrer"><span><strong>Nexus Forge</strong><small data-discord-presence>Consultando presencia…</small></span><span class="others-discord-arrow" aria-hidden="true">↗</span></a>
+              <a class="others-discord-link" data-discord-code="kQ8pxqmhfS" href="https://discord.gg/kQ8pxqmhfS" target="_blank" rel="noopener noreferrer"><span><strong>Nexus Studios</strong><small data-discord-presence>Consultando presencia…</small></span><span class="others-discord-arrow" aria-hidden="true">↗</span></a>
+              <a class="others-discord-link" data-discord-code="p2bQMgcQ3s" href="https://discord.gg/p2bQMgcQ3s" target="_blank" rel="noopener noreferrer"><span><strong>NexusMusic</strong><small data-discord-presence>Consultando presencia…</small></span><span class="others-discord-arrow" aria-hidden="true">↗</span></a>
+            </div>
+          </section>
+          <section class="others-terms" aria-labelledby="othersTermsTitle">
+            <div><span class="eyebrow-label">Antes de comprar</span><h2 id="othersTermsTitle">Condiciones de venta</h2></div>
+            <p><strong>No hay reembolsos.</strong> Todas las compras son finales. Revisa los beneficios y las condiciones del producto antes de completar el pago.</p>
+          </section>
+          <section class="others-share" aria-labelledby="othersShareTitle">
+            <div><span class="eyebrow-label">Invita a alguien</span><h2 id="othersShareTitle">Comparte Nexus Forma</h2><p>Envía el enlace del estudio creativo.</p></div>
+            <button class="btn" id="shareNexusForma" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.6 6.6-4.2m-6.6 7 6.6 4.1"/></svg>Compartir Nexus Forma</button>
+          </section>
+        </section>
+
+        <!-- ===== Chat IA ===== -->
+        <section class="view" id="view-chat">
+          <div class="chat-workspace">
+            <aside class="chat-history panel" aria-label="Historial de conversaciones">
+              <div class="chat-history-head"><span>Recientes</span><small id="chatRetentionLabel">5 días</small><button class="chat-history-clear" id="clearChatHistory" type="button" title="Borrar todo el historial" aria-label="Borrar todo el historial" disabled><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg></button></div>
+              <div class="chat-session-list" id="chatSessionList"><span class="history-loading">Tus conversaciones aparecerán aquí.</span></div>
+              <p class="chat-history-note" id="chatRetentionNote">Se guardan y caducan a los 5 días.</p>
+            </aside>
+            <div class="chat-screen panel">
+              <header class="chat-head">
+                <div class="chat-title"><span class="chat-mark" id="chatHeaderMark">f</span><h2>Nexus AI</h2></div>
+                <div class="chat-head-actions">
+                  <div class="chat-token-meter"><span id="chatTokenCount">Cargando cuota…</span><progress id="chatTokenProgress" max="500000" value="0"></progress></div>
+                  <button class="chat-new" id="newChat" type="button" title="Nuevo chat" aria-label="Nuevo chat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+                  <div class="chat-model" id="chatModelPicker"><img id="chatModelImage" class="chat-model-image" alt=""><span class="chat-model-fallback" id="chatModelFallback">N</span><span class="chat-model-label" aria-hidden="true">Modelo</span><div class="chat-model-select-wrap"><button class="chat-model-trigger" id="chatModelTrigger" type="button" aria-label="Modelo de IA" aria-haspopup="listbox" aria-expanded="false" aria-controls="chatModelOptions"><span id="chatModelTriggerLabel">Nexus-St</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button><div class="chat-model-options" id="chatModelOptions" role="listbox" aria-label="Modelos disponibles" hidden></div><select id="chatModel" class="chat-model-native-select" aria-hidden="true" tabindex="-1"><option value="Nexus-St">Nexus-St</option><option value="Nexus-Pro">Nexus-Pro</option><option value="Nexus-Basic">Nexus-Basic</option><option value="Nexus-Premium">Nexus-Premium</option><option value="Nexus-SST">Nexus-SST</option><option value="Nexus-Sonet">Nexus-Sonet</option><option value="Nexus-Astra">Nexus-Astra</option></select></div><span id="chatModelTier">Gratis</span><span class="chat-model-capabilities" id="chatModelCapabilities" aria-live="polite">Texto</span></div>
+                </div>
+              </header>
+              <div class="chat-agent-status" id="chatAgentStatus" role="status" hidden><span>Agente activo</span><strong id="chatActiveAgentName"></strong><button type="button" id="clearChatAgent">Desactivar</button></div>
+              <div class="chat-messages" id="chatMessages" aria-live="polite">
+                <div class="chat-welcome" id="chatWelcome">
+                  <div class="chat-sparkle"><svg viewBox="0 0 24 24"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3ZM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1 1-2.5Z"/></svg></div>
+                  <h2>¿Qué tienes en mente?</h2>
+                  <p>Hablemos de ideas, creatividad o de lo que quieras resolver.</p>
+                  <div class="chat-suggestions">
+                    <button type="button" data-chat-suggestion="Ayúdame a crear una idea visual para una campaña de verano."><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg><span>Ideas para una campaña</span></button>
+                    <button type="button" data-chat-suggestion="Dame tres conceptos de imagen para una marca de café artesanal."><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-9 9"/></svg><span>Conceptos para una imagen</span></button>
+                    <button type="button" data-chat-suggestion="Explícame cómo escribir un buen prompt para generar imágenes."><svg viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19l-4 1Z"/></svg><span>Mejorar mis prompts</span></button>
+                  </div>
+                </div>
+              </div>
+              <form class="chat-composer" id="chatForm">
+                <div class="chat-composer-tools">
+                  <div class="chat-compose-modes">
+                    <button class="chat-tool-button" id="chatImageButton" type="button" title="Adjuntar imágenes compatibles con el modelo" aria-label="Adjuntar imagen"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5-9 9"/></svg><span>Imagen</span></button>
+                    <input id="chatImageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+                    <button class="chat-tool-button" id="chatAudioButton" type="button" title="Adjuntar audio a un modelo compatible" aria-label="Adjuntar audio"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="3" height="8" rx="1.5"/><rect x="10" y="4" width="3" height="16" rx="1.5"/><rect x="16" y="7" width="3" height="10" rx="1.5"/></svg><span>Audio</span></button>
+                    <input id="chatAudioInput" type="file" accept="audio/wav,audio/mpeg,.wav,.mp3" hidden>
+                    <button class="chat-tool-button" id="chatDictateButton" type="button" title="Dictar un mensaje con el micrófono" aria-label="Dictar mensaje"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3m-4 0h8"/></svg><span>Dictar</span></button>
+                    <button class="chat-tool-button chat-mode-toggle" id="chatReasoningToggle" type="button" aria-pressed="false" title="Muestra una explicación breve de pasos clave, no razonamiento interno"><svg viewBox="0 0 24 24"><path d="M9 18h6m-5 3h4m-2-19a7 7 0 0 0-4 12.7c.5.4 1 1 1 1.8h6c0-.8.5-1.4 1-1.8A7 7 0 0 0 12 2Z"/></svg><span>Pensamiento breve</span></button>
+                    <button class="chat-tool-button chat-mode-toggle" id="chatWebSearchToggle" type="button" aria-pressed="false" title="Buscar fuentes web; puede usar créditos adicionales del proveedor"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5M4 10.8h13.6M10.8 4a11 11 0 0 1 0 13.6M10.8 4a11 11 0 0 0 0 13.6"/></svg><span>Buscar web</span></button>
+                  </div>
+                  <div class="chat-attachments" id="chatAttachments" hidden></div>
+                </div>
+                <textarea id="chatInput" rows="1" maxlength="4000" placeholder="Escribe tu mensaje…" aria-label="Mensaje para Nexus"></textarea>
+                <div class="chat-compose-bottom"><span id="chatCooldown">Modelos gratis · sujetos a límites de OpenRouter</span><button type="submit" id="chatSend" aria-label="Enviar mensaje" title="Enviar mensaje"><svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
+              </form>
+              <p class="chat-disclaimer">El chat usa un servicio. No compartas contraseñas ni información sensible.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <dialog class="signout-dialog" id="signOutDialog" aria-labelledby="signOutTitle" aria-describedby="signOutMessage">
+    <section class="signout-content">
+      <span class="signout-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg></span>
+      <span class="profile-kicker">Tu cuenta</span>
+      <h2 id="signOutTitle">¿Cerrar sesión?</h2>
+      <p id="signOutMessage">Vas a salir de Nexus Forma en este dispositivo. Tu actividad guardada seguirá en tu cuenta.</p>
+      <div class="signout-actions"><button class="btn" id="cancelSignOut" type="button">Seguir conectado</button><button class="btn signout-confirm" id="confirmSignOut" type="button">Cerrar sesión</button></div>
+    </section>
+  </dialog>
+
+  <dialog class="chat-delete-dialog" id="chatDeleteDialog" aria-labelledby="chatDeleteTitle" aria-describedby="chatDeleteMessage">
+    <section class="chat-delete-content">
+      <span class="chat-delete-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg></span>
+      <span class="profile-kicker">Historial de chat</span>
+      <h2 id="chatDeleteTitle">Borrar conversación</h2>
+      <p id="chatDeleteMessage">Esta acción no se puede deshacer.</p>
+      <div class="chat-delete-actions"><button class="btn" id="cancelChatDelete" type="button">Conservar</button><button class="btn chat-delete-confirm" id="confirmChatDelete" type="button">Borrar</button></div>
+    </section>
+  </dialog>
+
+  <dialog class="profile-dialog" id="profileDialog" aria-labelledby="profileTitle">
+    <form id="profileForm">
+      <button class="profile-close" id="closeProfile" type="button" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <h2 id="profileTitle">Editar perfil</h2>
+      <p class="profile-intro">Personaliza el nombre y la foto que aparecen en tu espacio.</p>
+      <div class="profile-photo-row"><div class="profile-photo-preview" id="profilePhotoPreview">DC</div><div><button class="btn" id="chooseProfilePhoto" type="button">Cambiar foto</button><input id="profilePhotoInput" type="file" accept="image/png,image/jpeg,image/webp" hidden><small>JPG, PNG o WebP · máximo 5 MB</small></div></div>
+      <label class="profile-label" for="profileNameInput">Nombre visible</label>
+      <input class="profile-name-input" id="profileNameInput" maxlength="80" autocomplete="name" required>
+      <p class="profile-feedback" id="profileFeedback" role="status" aria-live="polite"></p>
+      <button class="btn primary profile-save" id="saveProfile" type="submit">Guardar cambios</button>
+      <section class="profile-account-summary" aria-label="Créditos y compras">
+        <article class="profile-credits-panel"><span class="eyebrow-label">Tu saldo</span><div id="profileCreditsSummary"><strong>0</strong><span>créditos disponibles</span><small>Los créditos se suman a tu cuota al aprobar una compra.</small></div></article>
+        <section class="profile-purchases-panel" aria-labelledby="profilePurchasesTitle"><div class="profile-purchases-head"><h3 id="profilePurchasesTitle">Tus compras</h3><span>Últimas 20</span></div><div id="profilePurchasesList"><small class="profile-purchase-empty">Todavía no tienes compras registradas.</small></div></section>
+      </section>
+      <section class="profile-security" aria-labelledby="profileSecurityTitle">
+        <h3 id="profileSecurityTitle">Acceso y seguridad</h3>
+        <label class="profile-label" for="newEmailInput">Cambiar correo</label>
+        <input class="profile-name-input" id="newEmailInput" type="email" autocomplete="email" placeholder="nuevo@correo.com">
+        <label class="profile-label" for="emailCurrentPassword">Contraseña actual para confirmar el correo</label>
+        <input class="profile-name-input" id="emailCurrentPassword" type="password" autocomplete="current-password">
+        <button class="btn profile-security-action" id="changeEmailButton" type="button">Enviar verificación</button>
+        <div class="profile-security-divider"></div>
+        <label class="profile-label" for="currentPasswordInput">Contraseña actual</label>
+        <input class="profile-name-input" id="currentPasswordInput" type="password" autocomplete="current-password">
+        <label class="profile-label" for="newPasswordInput">Contraseña nueva</label>
+        <input class="profile-name-input" id="newPasswordInput" type="password" autocomplete="new-password" minlength="8">
+        <label class="profile-label" for="confirmPasswordInput">Repetir contraseña nueva</label>
+        <input class="profile-name-input" id="confirmPasswordInput" type="password" autocomplete="new-password" minlength="8">
+        <button class="btn profile-security-action" id="changePasswordButton" type="button">Cambiar contraseña</button>
+        <p class="profile-feedback" id="securityFeedback" role="status" aria-live="polite"></p>
+      </section>
+    </form>
+  </dialog>
+
+  <dialog class="payment-dialog" id="paymentDialog" aria-labelledby="paymentTitle">
+    <form id="paymentForm" class="payment-form">
+      <button class="profile-close" id="closePayment" type="button" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <span class="profile-kicker" id="paymentKicker">Solicitud de acceso</span>
+      <h2 id="paymentTitle">Enviar comprobante</h2>
+      <p class="profile-intro" id="paymentPlanSummary"></p>
+      <label class="profile-label" for="paymentMethod">Método de pago</label>
+      <select class="profile-name-input" id="paymentMethod" required></select>
+      <div class="payment-account-details" id="paymentAccountDetails"></div>
+      <div class="payment-fields-grid">
+        <label class="profile-label">Nombre del comprador<input class="profile-name-input" id="buyerName" maxlength="100" required></label>
+        <label class="profile-label">Correo del comprador<input class="profile-name-input" id="buyerEmail" type="email" readonly required></label>
+        <label class="profile-label">Nombre de quien envió el dinero<input class="profile-name-input" id="payerName" maxlength="100" required></label>
+        <label class="profile-label">Nombre de la cuenta que envió el pago<input class="profile-name-input" id="recipientAccountName" maxlength="100" required></label>
+        <label class="profile-label">Alias (opcional)<input class="profile-name-input" id="payerAlias" maxlength="80"></label>
+        <label class="profile-label">Teléfono<input class="profile-name-input" id="payerPhone" type="tel" maxlength="30" required></label>
+      </div>
+      <fieldset class="payment-model-options" id="paymentModelOptions" hidden><legend>Modelos alquilados</legend></fieldset>
+      <label class="profile-label" for="receiptFile">Imagen del comprobante</label>
+      <input class="payment-file" id="receiptFile" type="file" accept="image/jpeg,image/png,image/webp">
+      <label class="profile-label" for="receiptUrl">O pega un enlace a la imagen</label>
+      <input class="profile-name-input" id="receiptUrl" type="url" placeholder="https://…">
+      <p class="payment-feedback" id="paymentFeedback" role="status" aria-live="polite"></p>
+      <button class="btn primary profile-save" id="submitPayment" type="submit">Enviar comprobante</button>
+    </form>
+  </dialog>
+
+  <dialog class="developer-api-dialog" id="developerApiDialog" aria-labelledby="developerApiTitle" aria-describedby="developerApiDescription">
+    <section class="developer-api-panel">
+      <button class="profile-close" id="closeDeveloperApi" type="button" aria-label="Cerrar API Plus"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <div class="developer-api-hero">
+        <div class="developer-api-brand"><span class="developer-api-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg></span><span class="profile-kicker">NEXUS DEVELOPER</span></div>
+        <span class="developer-api-state" id="developerApiState" role="status">Comprobando acceso…</span>
+        <h2 id="developerApiTitle">Tus modelos. Tus productos.</h2>
+        <p id="developerApiDescription">Conecta Nexus a sitios y aplicaciones mediante una API compatible con chat completions.</p>
+      </div>
+      <div class="developer-api-endpoint-row"><label class="profile-label" for="developerApiEndpoint">Endpoint<input class="profile-name-input" id="developerApiEndpoint" type="url" readonly></label><button class="btn developer-api-copy" id="copyDeveloperApiEndpoint" type="button" aria-label="Copiar endpoint" title="Copiar endpoint"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button></div>
+      <div class="developer-api-models" id="developerApiModels" aria-label="Modelos disponibles"></div>
+      <section class="developer-api-locked" id="developerApiLocked" hidden><div><strong>API Plus incluida con Pro y Premium</strong><p>Elige uno de esos planes para activar claves y acceder a los modelos avanzados.</p></div><button class="btn primary" id="developerApiPlansButton" type="button">Comprar API Plus</button></section>
+      <section class="developer-api-active" id="developerApiActive" hidden aria-labelledby="developerApiKeysTitle">
+        <div class="developer-api-keys-heading"><div><h3 id="developerApiKeysTitle">Claves API</h3><span id="developerApiKeyCount">0 de 5 activas</span></div><button class="btn primary" id="createDeveloperApiKey" type="button">Crear clave</button></div>
+        <div class="developer-api-key-reveal" id="developerApiKeyReveal" hidden><div><strong>Guarda esta clave ahora</strong><span>Solo se muestra una vez. No la publiques en el navegador ni en una app móvil.</span></div><div class="developer-api-secret-row"><input class="profile-name-input" id="developerApiSecret" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Nueva clave API"><button class="btn developer-api-copy" id="copyDeveloperApiSecret" type="button" aria-label="Copiar clave API" title="Copiar clave API"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button></div></div>
+        <div class="developer-api-key-list" id="developerApiKeysList"><p class="developer-api-empty">Cargando claves…</p></div>
+      </section>
+      <section class="developer-api-integration" aria-labelledby="developerApiIntegrationTitle"><div class="developer-api-code-heading"><h3 id="developerApiIntegrationTitle">Llamada desde tu servidor</h3><button class="btn developer-api-copy" id="copyDeveloperApiExample" type="button">Copiar ejemplo</button></div><pre><code id="developerApiExample">fetch('https://tu-dominio.com/v1/chat/completions', { /* usa tu clave desde el servidor */ })</code></pre><p>Para web y móvil, envía la solicitud desde tu backend. Una clave dentro del código público o de una app instalada se puede extraer.</p></section>
+      <p class="developer-api-feedback" id="developerApiFeedback" role="status" aria-live="polite"></p>
+    </section>
+  </dialog>
+
+  <dialog class="admin-dialog" id="adminDialog" aria-labelledby="adminTitle">
+    <form id="adminForm" class="admin-panel">
+      <div class="admin-panel-head">
+        <div class="admin-heading">
+          <span class="admin-heading-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM20 8v6m3-3h-6"/></svg></span>
+          <div>
+            <span class="profile-kicker">Administración</span>
+            <h2 id="adminTitle">Usuarios y accesos</h2>
+          </div>
+        </div>
+        <div class="admin-head-actions">
+          <button class="admin-refresh" id="refreshUsers" type="button" aria-label="Actualizar usuarios" title="Actualizar usuarios"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"/></svg></button>
+          <button class="profile-close admin-close" id="closeAdmin" type="button" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+      </div>
+      <nav class="admin-tabs" aria-label="Secciones de administración">
+        <button type="button" class="active" data-admin-tab="users">Usuarios</button>
+        <button type="button" data-admin-tab="plans">Planes</button>
+        <button type="button" data-admin-tab="tokens">Tokens</button>
+        <button type="button" data-admin-tab="models">Modelos IA</button>
+        <button type="button" data-admin-tab="payments">Pagos <span id="adminPendingCount">0</span></button>
+        <button type="button" data-admin-tab="methods">Métodos de pago</button>
+        <button type="button" data-admin-tab="customization">Personalización</button>
+      </nav>
+      <div class="admin-view active" data-admin-view="users"><div class="admin-grid">
+        <div class="admin-list-wrap">
+          <div class="admin-section-head"><h3>Usuarios</h3><span id="adminUserCount">0 cuentas</span></div>
+          <label class="admin-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="adminUserSearch" type="search" placeholder="Buscar nombre o correo" autocomplete="off"></label>
+          <div id="adminUserList" class="admin-user-list"></div>
+        </div>
+        <div class="admin-form-wrap">
+          <div class="admin-section-head"><h3>Asignar acceso</h3><span class="admin-section-dot"></span></div>
+          <div class="admin-field">
+            <label class="profile-label" for="adminUserEmail">Cuenta seleccionada</label>
+            <input class="profile-name-input" id="adminUserEmail" type="email" placeholder="Selecciona un usuario" required>
+          </div>
+          <div class="admin-fields-row">
+            <div class="admin-field">
+              <label class="profile-label" for="adminUserPlan">Plan o etiqueta</label>
+              <select class="profile-name-input" id="adminUserPlan">
+                <option value="Gratis">Gratis</option>
+                <option value="Pro">Pro</option>
+                <option value="Estudio">Estudio</option>
+                <option value="Premium">Premium</option>
+                <option value="Alquiler">Alquiler</option>
+              </select>
+            </div>
+            <div class="admin-field">
+              <label class="profile-label" for="adminUserDuration">Duración</label>
+              <input class="profile-name-input" id="adminUserDuration" type="text" value="30 días" placeholder="30 días">
+            </div>
+          </div>
+          <fieldset class="premium-models">
+            <legend>Modelos incluidos</legend>
+            <div class="admin-premium-model-options" id="adminPremiumModelOptions"></div>
+          </fieldset>
+          <div class="admin-form-footer"><span>Los cambios se guardan en Firebase.</span><button class="btn primary" id="saveAdminUser" type="submit"><svg viewBox="0 0 24 24"><path d="M20 7 10 17l-5-5"/></svg>Guardar cambios</button></div>
+        </div>
+      </div></div>
+      <section class="admin-view admin-plans-view" data-admin-view="plans" hidden><div class="admin-section-head"><h3>Editar planes</h3><span>Nombre, precio, duración, tokens, funciones y beneficios</span></div><div id="adminPlansConfig" class="admin-plans-config"></div><div class="admin-config-actions"><button class="btn" id="addPlanConfig" type="button">Agregar plan</button><button class="btn primary" id="savePlanConfig" type="button">Guardar planes</button></div></section>
+      <section class="admin-view admin-token-packages-view" data-admin-view="tokens" hidden><div class="admin-section-head"><div><h3>Paquetes de tokens</h3><span>Configura cantidad, precio y disponibilidad</span></div><button class="btn" type="button" data-admin-tab="methods">Configurar métodos de pago</button></div><div id="adminTokenPackagesConfig" class="admin-token-packages-config"></div><div class="admin-config-actions"><button class="btn" id="addTokenPackage" type="button">Agregar paquete</button><button class="btn primary" id="saveTokenPackages" type="button">Guardar paquetes</button></div></section>
+      <section class="admin-view admin-model-view" data-admin-view="models" hidden><div class="admin-section-head"><h3>Catálogo de modelos</h3><span>Configura nombre, proveedor, nivel y tokens</span></div><div id="adminModelsConfig" class="admin-model-config"></div><div class="admin-model-add-row"><label class="admin-customization-field" for="newAiModelId">ID público del modelo (ej. Nexus-Day)<input class="profile-name-input" id="newAiModelId" type="text" maxlength="54" placeholder="Nexus-Day" autocomplete="off"></label><button class="btn" id="addAiModel" type="button">Agregar modelo</button></div><div class="admin-config-actions"><button class="btn primary" id="saveModelConfig" type="button">Guardar modelos</button></div></section>
+      <section class="admin-view admin-payments-view" data-admin-view="payments" hidden><div class="admin-section-head"><h3>Comprobantes recibidos</h3><span id="adminPaymentCount">0 pendientes</span></div><div class="admin-payments-layout"><div id="adminPaymentQueue" class="admin-payment-queue"></div><article id="adminPaymentDetail" class="admin-payment-detail"><span class="admin-user-empty">Selecciona un comprobante para revisarlo.</span></article></div></section>
+      <section class="admin-view admin-methods-view" data-admin-view="methods" hidden><div class="admin-section-head"><h3>Métodos de pago</h3><span>Agrega, edita o desactiva métodos visibles en Planes</span></div><div id="adminMethodsConfig" class="admin-method-grid"></div><div class="admin-config-actions"><button class="btn" id="addPaymentMethod" type="button">Agregar método</button><button class="btn primary" id="savePaymentMethods" type="button">Guardar métodos</button></div></section>
+      <section class="admin-view admin-customization-view" data-admin-view="customization" hidden><div class="admin-section-head"><h3>Personalización de la web</h3><span>Fondo general, efectos de temporada y decoración</span></div><div id="adminWebCustomizationConfig" class="admin-customization-config"></div><div class="admin-config-actions"><button class="btn primary" id="saveWebCustomization" type="button">Guardar personalización</button></div></section>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/account.js"></script>
+  <script type="module" src="js/payments.js"></script>
+  <script type="module" src="js/security.js"></script>
+</body>
+</html>
