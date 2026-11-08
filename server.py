@@ -47,6 +47,13 @@ PUBLIC_API_MIN_INTERVAL = 1.0
 FEEDBACK_ADMIN_EMAILS = {'santhiagocaro05@gmail.com', 'admin@forma.app'}
 FEEDBACK_TYPES = {'idea', 'problem', 'praise', 'other'}
 FEEDBACK_AREAS = {'general', 'chat', 'image', 'editor', 'plans', 'agents', 'account'}
+REFERRAL_DEFAULTS = {
+    'enabled': True, 'inviterTokens': 50_000, 'guestTokens': 40_000,
+    'maxClaimsPerInviter': 100, 'claimWindowDays': 7,
+    'requireVerifiedEmail': True,
+}
+REFERRAL_CODE_PATTERN = re.compile(r'^NX-[A-HJ-NP-Z2-9]{8}$')
+
 MODEL_ALIASES = {
     'Nexus-Flash': 'nvidia/nemotron-3.5-lightning:free',
     'Nexus-St': 'nvidia/nemotron-3.5-lightning:free',
@@ -209,6 +216,32 @@ def initialize_usage_db():
         ''')
         connection.execute('CREATE INDEX IF NOT EXISTS feedback_submissions_user_time ON feedback_submissions (user_id, created_at DESC)')
         connection.execute('CREATE INDEX IF NOT EXISTS feedback_submissions_time ON feedback_submissions (created_at DESC)')
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS referral_codes (
+                user_id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE,
+                email_hash TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+            )
+        """)
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS referral_redemptions (
+                guest_id TEXT PRIMARY KEY, inviter_id TEXT NOT NULL, code TEXT NOT NULL,
+                guest_email_hash TEXT NOT NULL UNIQUE, inviter_tokens INTEGER NOT NULL,
+                guest_tokens INTEGER NOT NULL, created_at TEXT NOT NULL
+            )
+        """)
+        connection.execute('CREATE INDEX IF NOT EXISTS referral_redemptions_inviter ON referral_redemptions (inviter_id, created_at)')
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS referral_wallets (
+                user_id TEXT PRIMARY KEY, balance INTEGER NOT NULL DEFAULT 0,
+                total_earned INTEGER NOT NULL DEFAULT 0, spent_cycle INTEGER NOT NULL DEFAULT 0,
+                cycle_key TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS referral_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1), config_json TEXT NOT NULL
+            )
+        """)
         connection.execute('CREATE INDEX IF NOT EXISTS usage_events_user_date ON usage_events (user_id, event_at)')
         connection.execute('''
             INSERT OR IGNORE INTO token_usage_cycles
@@ -404,6 +437,134 @@ def build_model_registry(app_config=None):
             'audio': merged.get('audio') is True,
         }
     return registry
+
+
+def referral_settings():
+    with sqlite3.connect(USAGE_DB, timeout=10) as connection:
+        row = connection.execute('SELECT config_json FROM referral_settings WHERE id = 1').fetchone()
+    try:
+        stored = json.loads(row[0]) if row else {}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        stored = {}
+    values = {**REFERRAL_DEFAULTS}
+    for key in ('enabled', 'requireVerifiedEmail'):
+        if type(stored.get(key)) is bool:
+            values[key] = stored[key]
+    for key, ceiling in (('inviterTokens', 1_000_000), ('guestTokens', 1_000_000),
+                         ('maxClaimsPerInviter', 10_000), ('claimWindowDays', 90)):
+        if type(stored.get(key)) is int and 1 <= stored[key] <= ceiling:
+            values[key] = stored[key]
+    return values
+
+
+def referral_email_hash(email):
+    return hashlib.sha256(str(email or '').strip().casefold().encode('utf-8')).hexdigest()
+
+
+def referral_code_for_user(identity):
+    uid = identity['localId']
+    with sqlite3.connect(USAGE_DB, timeout=15) as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        row = connection.execute('SELECT code FROM referral_codes WHERE user_id = ?', (uid,)).fetchone()
+        if row:
+            return row[0]
+        alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        for _ in range(16):
+            code = 'NX-' + ''.join(secrets.choice(alphabet) for _ in range(8))
+            try:
+                connection.execute('INSERT INTO referral_codes (user_id, code, email_hash, created_at) VALUES (?, ?, ?, ?)',
+                                   (uid, code, referral_email_hash(identity.get('email')), datetime.now(timezone.utc).isoformat()))
+                connection.commit()
+                return code
+            except sqlite3.IntegrityError:
+                continue
+    raise RuntimeError('No se pudo asignar un código único.')
+
+
+def referral_wallet_bonus(user_id, cycle_key):
+    # Gasto del bono en el ciclo actual se recuerda para que no se reactive al renovar.
+    with sqlite3.connect(USAGE_DB, timeout=10) as connection:
+        row = connection.execute('SELECT balance, spent_cycle, cycle_key FROM referral_wallets WHERE user_id = ?', (user_id,)).fetchone()
+    if not row:
+        return 0, 0
+    balance, spent, previous = row
+    return max(0, balance), (max(0, spent) if previous == cycle_key else 0)
+
+
+def referral_account_status(identity):
+    user_id = identity['localId']
+    with sqlite3.connect(USAGE_DB, timeout=10) as connection:
+        redeemed = connection.execute('SELECT code, inviter_tokens, guest_tokens, created_at FROM referral_redemptions WHERE guest_id = ?',
+                                      (user_id,)).fetchone()
+        invited = connection.execute('SELECT COUNT(*), COALESCE(SUM(inviter_tokens),0) FROM referral_redemptions WHERE inviter_id = ?',
+                                     (user_id,)).fetchone()
+        wallet = connection.execute('SELECT balance, total_earned FROM referral_wallets WHERE user_id = ?', (user_id,)).fetchone() or (0,0)
+    created_at = identity.get('createdAt')
+    try:
+        created = datetime.fromtimestamp(int(created_at) / 1000, tz=timezone.utc)
+        within_window = datetime.now(timezone.utc) - created <= timedelta(days=referral_settings()['claimWindowDays'])
+    except (ValueError, TypeError, OverflowError, OSError):
+        within_window = False
+    return {
+        'invitedCount': invited[0], 'inviterEarned': invited[1],
+        'bonusBalance': max(0, wallet[0]), 'bonusEarned': max(0, wallet[1]),
+        'redeemed': bool(redeemed), 'redeemedCode': redeemed[0] if redeemed else None,
+        'canRedeem': bool(not redeemed and within_window),
+        'verifiedEmail': identity.get('emailVerified') is True,
+    }
+
+
+def redeem_referral(identity, submitted_code):
+    settings = referral_settings()
+    if not settings['enabled']:
+        return 403, 'El programa de referidos está temporalmente desactivado.', None
+    code = str(submitted_code or '').strip().upper()
+    if not REFERRAL_CODE_PATTERN.fullmatch(code):
+        return 400, 'Introduce un código de invitación válido.', None
+    if settings['requireVerifiedEmail'] and identity.get('emailVerified') is not True:
+        return 403, 'Verifica tu correo en Firebase antes de reclamar la recompensa.', None
+    email = str(identity.get('email') or '').strip()
+    if not email:
+        return 403, 'Necesitas una cuenta con correo electrónico para usar un código.', None
+    try:
+        created = datetime.fromtimestamp(int(identity.get('createdAt')) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return 403, 'No se pudo comprobar la fecha de creación de tu cuenta.', None
+    age = datetime.now(timezone.utc) - created
+    if age > timedelta(days=settings['claimWindowDays']) or age < timedelta(minutes=-10):
+        return 403, 'El código es válido solo para cuentas recién creadas.', None
+    guest_id = identity['localId']
+    digest = referral_email_hash(email)
+    now = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+    with sqlite3.connect(USAGE_DB, timeout=20) as connection:
+        connection.execute('BEGIN IMMEDIATE')
+        owner = connection.execute('SELECT user_id, email_hash FROM referral_codes WHERE code = ?', (code,)).fetchone()
+        if not owner:
+            return 404, 'No existe un código de invitación con ese nombre.', None
+        inviter_id, inviter_email = owner
+        if inviter_id == guest_id or inviter_email == digest:
+            return 400, 'No puedes utilizar tu propio código de invitación.', None
+        if connection.execute('SELECT 1 FROM referral_redemptions WHERE guest_id = ? OR guest_email_hash = ?',
+                              (guest_id, digest)).fetchone():
+            return 409, 'Esta cuenta o correo ya utilizó una invitación.', None
+        count = connection.execute('SELECT COUNT(*) FROM referral_redemptions WHERE inviter_id = ?', (inviter_id,)).fetchone()[0]
+        if count >= settings['maxClaimsPerInviter']:
+            return 409, 'Este código alcanzó el máximo de invitaciones permitidas.', None
+        try:
+            connection.execute('''INSERT INTO referral_redemptions
+                  (guest_id, inviter_id, code, guest_email_hash, inviter_tokens, guest_tokens, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                  (guest_id, inviter_id, code, digest, settings['inviterTokens'], settings['guestTokens'], now))
+            for uid, amount in ((inviter_id, settings['inviterTokens']), (guest_id, settings['guestTokens'])):
+                connection.execute('''INSERT INTO referral_wallets (user_id, balance, total_earned)
+                     VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
+                     balance = balance + excluded.balance, total_earned = total_earned + excluded.total_earned''',
+                     (uid, amount, amount))
+            connection.commit()
+        except sqlite3.IntegrityError:
+            return 409, 'Esta invitación ya fue utilizada.', None
+    return 200, '', {'ok': True, 'inviterTokens': settings['inviterTokens'],
+                     'guestTokens': settings['guestTokens']}
 
 
 def normalized_question(message):
@@ -870,9 +1031,14 @@ def token_quota(profile, model_name, now=None, model_config=None):
     return quota
 
 
-def token_quotas(profile, model, now=None):
+def token_quotas(profile, model, now=None, user_id=None):
     now = now or datetime.now(timezone.utc)
     primary = token_quota(profile, model['id'], now, model)
+    if user_id and primary['bucket'] == 'account':
+        balance, spent = referral_wallet_bonus(user_id, primary['cycleKey'])
+        primary = {**primary, 'baseLimit': primary['limit'],
+                   'limit': primary['limit'] + balance + spent,
+                   'referralWallet': True}
     quotas = [primary]
     model_limit = int(model.get('tokenLimit') or 0)
     if model_limit > 0:
@@ -1035,6 +1201,9 @@ def settle_tokens(user_id, reserved, prompt_tokens=0, completion_tokens=0, bucke
     with sqlite3.connect(USAGE_DB, timeout=10) as connection:
         connection.execute('BEGIN IMMEDIATE')
         for item in buckets:
+            prior = connection.execute('''SELECT prompt_tokens + completion_tokens FROM token_usage_cycles
+                      WHERE user_id = ? AND bucket = ?''', (user_id, item['bucket'])).fetchone()
+            before_used = prior[0] if prior else 0
             connection.execute('''
                 UPDATE token_usage_cycles SET
                     prompt_tokens = prompt_tokens + ?,
@@ -1042,6 +1211,17 @@ def settle_tokens(user_id, reserved, prompt_tokens=0, completion_tokens=0, bucke
                     reserved_tokens = MAX(0, reserved_tokens - ?)
                 WHERE user_id = ? AND bucket = ?
             ''', (prompt_tokens, completion_tokens, reserved, user_id, item['bucket']))
+            if item.get('referralWallet') and prompt_tokens + completion_tokens > 0:
+                base = item['baseLimit']
+                new_used = before_used + prompt_tokens + completion_tokens
+                debit = max(0, new_used - base) - max(0, before_used - base)
+                if debit > 0:
+                    connection.execute('''UPDATE referral_wallets SET
+                        spent_cycle = CASE WHEN cycle_key = ? THEN spent_cycle + MIN(balance, ?)
+                            ELSE MIN(balance, ?) END,
+                        balance = MAX(0, balance - ?), cycle_key = ?
+                        WHERE user_id = ?''',
+                        (item['cycleKey'], debit, debit, debit, item['cycleKey'], user_id))
         connection.commit()
 
 
@@ -1056,7 +1236,12 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # La pestaña se cerró o la petición fue cancelada al navegar.
+            # La respuesta ya no tiene destinatario: no es un error de la API.
+            return
 
     def send_public_json(self, status, data):
         body = json.dumps(data, ensure_ascii=True).encode('utf-8')
@@ -1068,7 +1253,12 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-API-Key')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # La pestaña se cerró o la petición fue cancelada al navegar.
+            # La respuesta ya no tiene destinatario: no es un error de la API.
+            return
 
     def authenticated_user_id(self):
         authorization = self.headers.get('Authorization', '')
@@ -1355,8 +1545,72 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         self.send_json(200, {'ok': True})
 
+    def referral_me(self):
+        identity = self.feedback_identity()
+        if not identity:
+            return
+        code = referral_code_for_user(identity)
+        self.send_json(200, {'code': code, 'settings': referral_settings(),
+                             'account': referral_account_status(identity)})
+
+    def referral_claim(self):
+        identity = self.feedback_identity()
+        if not identity:
+            return
+        payload = self.feedback_read_json()
+        if payload is None:
+            return
+        status, error, result = redeem_referral(identity, payload.get('code'))
+        self.send_json(status, result if result else {'error': error})
+
+    def referral_admin(self, update=False):
+        identity = self.feedback_identity()
+        if not identity:
+            return
+        if not feedback_is_admin(identity):
+            self.send_json(403, {'error': 'El programa solo lo administra el equipo autorizado.'})
+            return
+        if update:
+            payload = self.feedback_read_json()
+            if payload is None:
+                return
+            expected = set(REFERRAL_DEFAULTS)
+            if set(payload) != expected:
+                self.send_json(400, {'error': 'Envía todas las opciones de referidos.'})
+                return
+            for key in ('enabled', 'requireVerifiedEmail'):
+                if type(payload[key]) is not bool:
+                    self.send_json(400, {'error': 'Los ajustes booleanos no son válidos.'})
+                    return
+            for key, maximum in (('inviterTokens', 1_000_000), ('guestTokens', 1_000_000),
+                                  ('maxClaimsPerInviter', 10_000), ('claimWindowDays', 90)):
+                if type(payload[key]) is not int or not 1 <= payload[key] <= maximum:
+                    self.send_json(400, {'error': f'El ajuste {key} está fuera de rango.'})
+                    return
+            with sqlite3.connect(USAGE_DB, timeout=15) as connection:
+                connection.execute('''INSERT INTO referral_settings(id, config_json) VALUES (1, ?)
+                    ON CONFLICT(id) DO UPDATE SET config_json = excluded.config_json''',
+                    (json.dumps(payload, ensure_ascii=False),))
+                connection.commit()
+        with sqlite3.connect(USAGE_DB, timeout=10) as connection:
+            total = connection.execute('SELECT COUNT(*), COALESCE(SUM(inviter_tokens),0), COALESCE(SUM(guest_tokens),0) FROM referral_redemptions').fetchone()
+            recent = connection.execute('''SELECT code, inviter_tokens, guest_tokens, created_at
+                FROM referral_redemptions ORDER BY created_at DESC LIMIT 12''').fetchall()
+            owners = connection.execute('SELECT COUNT(*) FROM referral_codes').fetchone()[0]
+        self.send_json(200, {'settings': referral_settings(), 'stats': {
+            'redeemed': total[0], 'issuedCodes': owners,
+            'inviterTokens': total[1], 'guestTokens': total[2],
+            'recent': [{'code': row[0], 'inviterTokens': row[1], 'guestTokens': row[2], 'createdAt': row[3]} for row in recent],
+        }})
+
     def do_GET(self):
         request_url = urlsplit(self.path)
+        if request_url.path == '/api/referrals/me':
+            self.referral_me()
+            return
+        if request_url.path == '/api/admin/referrals':
+            self.referral_admin()
+            return
         if request_url.path == '/api/feedback':
             self.feedback_list()
             return
@@ -1408,7 +1662,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             model_name = requested_model if requested_model in model_registry else next(iter(model_registry), 'Nexus-St')
             profile = read_firestore_user_profile(user_id, id_token) or {}
             model = model_registry.get(model_name, {})
-            quota = token_quotas(profile, model)
+            quota = token_quotas(profile, model, user_id=user_id)
             usage = read_token_usage(user_id, quota)
             today = datetime.now(timezone.utc).date()
             month_start = today.replace(day=1)
@@ -1801,7 +2055,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         except (json.JSONDecodeError, TypeError):
             self.send_public_json(401, {'error': {'message': 'La clave API no tiene una suscripción válida.', 'type': 'authentication_error'}})
             return
-        quota = token_quotas(profile, model)
+        quota = token_quotas(profile, model, user_id=user_id)
         system_prompt = build_chat_system_prompt('', '', False, False)
         reserved_tokens = len(system_prompt.encode('utf-8')) + sum(
             len(message['content'].encode('utf-8')) for message in clean_messages
@@ -1877,6 +2131,12 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         request_path = urlsplit(self.path).path
+        if request_path == '/api/referrals/claim':
+            self.referral_claim()
+            return
+        if request_path == '/api/admin/referrals':
+            self.referral_admin(update=True)
+            return
         if request_path == '/api/feedback':
             self.feedback_create()
             return
@@ -2030,7 +2290,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         if audio_data and not model.get('audio'):
             self.send_json(400, {'error': 'El modelo seleccionado no admite audio. Elige un modelo con entrada de audio.'})
             return
-        quota = token_quotas(profile, model)
+        quota = token_quotas(profile, model, user_id=user_id)
         if not isinstance(messages, list) or not messages or len(messages) > 12:
             self.send_json(400, {'error': 'La conversacion debe incluir entre 1 y 12 mensajes.'})
             return
