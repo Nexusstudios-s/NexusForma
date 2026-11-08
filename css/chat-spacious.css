@@ -1,0 +1,256 @@
+/* Nexus Forma · Chat IA más espacioso (escritorio, tablet y móvil).
+   Solo ajusta la distribución de #view-chat; no altera la lógica de la app. */
+
+@media (min-width: 761px) {
+  /* Aprovecha la pantalla incluso cuando el sitio usa zoom de 80 %. */
+  .shell:has(#view-chat.active) { max-width: 2020px; }
+  .content:has(#view-chat.active) {
+    max-width: none;
+    width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 12px;
+  }
+  #view-chat .chat-workspace {
+    grid-template-columns: clamp(188px, 16.5%, 235px) minmax(0, 1fr);
+    gap: clamp(12px, 1.1vw, 18px);
+    /* La hoja fit.css ya compensa el zoom; mantenemos esa altura. */
+  }
+  /* IMPORTANTE: sin historial (p. ej., plan Gratis) o al ampliar el chat,
+     no debe reservarse una columna vacía. Esta regla tiene que ganar a
+     #view-chat .chat-workspace y al ajuste de tablet que aparece más abajo. */
+  #view-chat .chat-workspace.without-history,
+  #view-chat .chat-workspace.focus-mode {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #view-chat .chat-workspace.without-history > .chat-history {
+    display: none;
+  }
+  #view-chat .chat-screen { min-width: 0; width: 100%; }
+  #view-chat .chat-messages {
+    padding-left: max(24px, calc((100% - 940px) / 2));
+    padding-right: max(24px, calc((100% - 940px) / 2));
+  }
+  #view-chat .chat-message { max-width: 920px; }
+  #view-chat .chat-welcome { max-width: 760px; }
+  #view-chat .chat-composer {
+    margin-left: max(22px, calc((100% - 940px) / 2));
+    margin-right: max(22px, calc((100% - 940px) / 2));
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  #view-chat .chat-workspace:not(.without-history):not(.focus-mode) { grid-template-columns: 175px minmax(0, 1fr); gap: 12px; }
+  #view-chat .chat-history { padding: 13px 9px 11px; }
+  #view-chat .chat-history-head { padding-left: 4px; padding-right: 4px; }
+  #view-chat .chat-head { padding: 12px 14px; }
+  #view-chat .chat-head-actions { gap: 6px; min-width: 0; max-width: 100%; flex-wrap: wrap; }
+  #view-chat .chat-token-meter { min-width: 105px; }
+  #view-chat .chat-model-label,
+  #view-chat .chat-model .chat-model-capabilities { display: none; }
+  #view-chat .chat-messages { padding-left: 18px; padding-right: 18px; }
+  #view-chat .chat-composer { margin-left: 16px; margin-right: 16px; }
+  #view-chat .chat-composer-tools { padding-top: 9px; }
+  #view-chat .chat-compose-modes {
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  #view-chat .chat-compose-modes::-webkit-scrollbar { display: none; }
+  #view-chat .chat-tool-button { flex-shrink: 0; }
+}
+
+@media (max-width: 760px) {
+  /* El historial sigue accesible, pero ya no consume media pantalla. */
+  .content:has(#view-chat.active) { padding-top: 12px; padding-bottom: 0; }
+  #view-chat .chat-workspace { gap: 8px; min-height: 0; }
+  #view-chat .chat-workspace.focus-mode { gap: 0; }
+  #view-chat .chat-history {
+    height: 52px;
+    min-height: 52px;
+    padding: 5px 8px;
+    border-radius: 18px;
+  }
+  #view-chat .chat-history-head { top: 7px; right: 5px; }
+  #view-chat .chat-session-list { height: 100%; align-items: center; padding-right: 30px; }
+  #view-chat .chat-session-list .history-loading { margin: 0; padding: 4px 8px; font-size: 12px; }
+  #view-chat .chat-session-row { width: 144px; min-width: 144px; }
+  #view-chat .chat-session { padding: 6px 8px; }
+
+  /* Encaja justo entre la barra superior y la navegación inferior flotante. */
+  #view-chat .chat-screen {
+    height: calc(100dvh - 236px - env(safe-area-inset-bottom));
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 22px;
+  }
+  .shell.mobile-nav-hidden #view-chat .chat-screen {
+    height: calc(100dvh - 156px - env(safe-area-inset-bottom));
+  }
+  #view-chat .chat-workspace.focus-mode .chat-screen {
+    height: calc(100dvh - 176px - env(safe-area-inset-bottom));
+  }
+  .shell.mobile-nav-hidden #view-chat .chat-workspace.focus-mode .chat-screen {
+    height: calc(100dvh - 96px - env(safe-area-inset-bottom));
+  }
+  #view-chat .chat-head {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 10px 12px 9px;
+  }
+  #view-chat .chat-title { min-height: 27px; gap: 8px; }
+  #view-chat .chat-title .chat-mark { width: 27px; height: 27px; border-radius: 9px; }
+  #view-chat .chat-title h2 { font-size: 17px; }
+  #view-chat .chat-head-actions {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  #view-chat .chat-token-meter {
+    order: 0;
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    min-height: 36px;
+    padding: 5px 8px;
+    gap: 4px;
+    border-radius: 11px;
+  }
+  #view-chat .chat-token-meter span { font-size: 10px; }
+  #view-chat .chat-model {
+    order: 1;
+    flex: 0 1 130px;
+    min-width: 0;
+    max-width: 130px;
+    height: 36px;
+    padding: 0 6px;
+    gap: 5px;
+  }
+  #view-chat .chat-model-select-wrap { min-width: 0; max-width: 100%; }
+  #view-chat .chat-model-trigger { min-width: 0; max-width: 100%; gap: 4px; font-size: 11px; }
+  #view-chat .chat-focus-toggle { order: 2; flex: none; width: 34px; height: 34px; }
+  #view-chat .chat-new { order: 3; flex: none; width: 34px; height: 34px; }
+
+  /* El mensaje recupera el espacio antes ocupado por controles apilados. */
+  #view-chat .chat-messages {
+    min-height: 0;
+    padding: 12px 12px 10px;
+    gap: 16px;
+    overscroll-behavior-y: contain;
+    scroll-padding-bottom: 14px;
+  }
+  #view-chat .chat-welcome {
+    max-width: 100%;
+    margin: auto;
+    padding: 8px 0;
+  }
+  #view-chat .chat-sparkle {
+    width: 42px;
+    height: 42px;
+    margin-bottom: 11px;
+    border-radius: 14px;
+  }
+  #view-chat .chat-sparkle svg { width: 21px; height: 21px; }
+  #view-chat .chat-welcome h2 { font-size: clamp(21px, 5.8vw, 26px); line-height: 1.18; }
+  #view-chat .chat-welcome p { margin-top: 7px; font-size: 12px; line-height: 1.4; }
+  #view-chat .chat-suggestions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-top: 15px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+  #view-chat .chat-suggestions::-webkit-scrollbar { display: none; }
+  #view-chat .chat-suggestions button {
+    flex: 0 0 min(182px, 65%);
+    min-width: 0;
+    min-height: 64px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 9px;
+    padding: 10px;
+    border-radius: 14px;
+    scroll-snap-align: start;
+  }
+  #view-chat .chat-suggestions svg { flex: none; width: 17px; height: 17px; }
+  #view-chat .chat-suggestions span { font-size: 11.5px; }
+
+  /* Una fila deslizable conserva Imagen, Audio, Archivo, Dictar, etc. */
+  #view-chat .chat-composer {
+    flex: 0 0 auto;
+    margin: 0 10px;
+    border-radius: 20px;
+  }
+  #view-chat .chat-composer-tools { display: block; padding: 8px 9px 0; }
+  #view-chat .chat-compose-modes {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+    padding-bottom: 3px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  #view-chat .chat-compose-modes::-webkit-scrollbar { display: none; }
+  #view-chat .chat-tool-button { flex: 0 0 auto; min-height: 32px; }
+  #view-chat .chat-attachments { margin-top: 7px; }
+  #view-chat .chat-composer textarea {
+    min-height: 44px;
+    max-height: min(150px, 30dvh);
+    padding: 10px 13px 4px;
+    font-size: 16px;
+  }
+  #view-chat .chat-compose-bottom { gap: 8px; padding: 0 8px 8px 13px; }
+  #view-chat .chat-compose-bottom #chatCooldown { font-size: 10px; }
+  /* Selector de razonamiento: nunca se corta en teléfonos pequeños. */
+  #view-chat .chat-effort-menu {
+    max-height: min(310px, calc(100dvh - 438px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  #view-chat .chat-disclaimer {
+    flex: 0 0 auto;
+    padding: 8px 13px 9px;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 350px) {
+  #view-chat .chat-head { padding: 8px 9px; }
+  #view-chat .chat-head-actions { gap: 4px; }
+  #view-chat .chat-model { flex-basis: 104px; max-width: 104px; }
+  #view-chat .chat-model-trigger { font-size: 10px; }
+  #view-chat .chat-focus-toggle,
+  #view-chat .chat-new { width: 32px; height: 32px; }
+  #view-chat .chat-token-meter span { font-size: 9px; }
+  #view-chat .chat-messages { padding: 9px 10px; }
+  #view-chat .chat-composer { margin: 0 7px; }
+  #view-chat .chat-welcome { padding: 0; }
+  #view-chat .chat-sparkle { width: 35px; height: 35px; margin-bottom: 7px; }
+  #view-chat .chat-welcome h2 { font-size: 20px; }
+  #view-chat .chat-welcome p { margin-top: 5px; font-size: 11px; }
+  #view-chat .chat-suggestions { margin-top: 10px; }
+  #view-chat .chat-suggestions button { min-height: 58px; }
+}
+
+@media (max-width: 760px) and (max-height: 600px) {
+  #view-chat .chat-history { height: 40px; min-height: 40px; }
+  #view-chat .chat-screen { height: calc(100dvh - 224px - env(safe-area-inset-bottom)); }
+  .shell.mobile-nav-hidden #view-chat .chat-screen { height: calc(100dvh - 144px - env(safe-area-inset-bottom)); }
+}
