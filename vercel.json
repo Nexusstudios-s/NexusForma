@@ -1,12 +1,4 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://TU-SERVICIO.onrender.com/api/:path*"
-    },
-    {
-      "source": "/v1/:path*",
-      "destination": "https://TU-SERVICIO.onrender.com/v1/:path*"
-    }
-  ]
+  "cleanUrls": true,
+  "trailingSlash": false
 }
