@@ -1,4 +1,4 @@
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, getAdditionalUserInfo, sendEmailVerification } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { getDoc, doc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { auth, authReady, db } from './firebase.js';
 
@@ -123,6 +123,18 @@ loadLoginBranding();
       themeToggle.setAttribute('aria-label', nextTheme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro');
     });
     const feedback = (message, success = false) => { $('#feedback').textContent = message; $('#feedback').classList.toggle('success', success); };
+    let authAttemptInProgress = false;
+    const newAccountKey = 'nexus-referral-new-uid';
+    const referralKey = 'nexus-referral-code';
+    const referralInUrl = new URLSearchParams(window.location.search).get('ref');
+    if (referralInUrl && /^NX-[A-HJ-NP-Z2-9]{8}$/i.test(referralInUrl)) {
+      sessionStorage.setItem(referralKey, referralInUrl.toUpperCase());
+    }
+    const referralCode = sessionStorage.getItem(referralKey) || '';
+    if (/^NX-[A-HJ-NP-Z2-9]{8}$/.test(referralCode)) {
+      $('#referralLoginTag').hidden = false;
+      $('#referralLoginCode').textContent = referralCode;
+    }
     let mode = 'login';
 
     function setMode(nextMode) {
@@ -171,11 +183,15 @@ loadLoginBranding();
       if (!email || !password) return feedback('Completa tu correo y contraseña.');
       const button = $('#submitButton'); button.disabled = true; button.textContent = mode === 'register' ? 'Creando cuenta…' : 'Entrando…';
       feedback('');
+      authAttemptInProgress = true;
       try {
         if (mode === 'register') {
           const credential = await createUserWithEmailAndPassword(auth, email, password);
           const displayName = $('#displayName').value.trim();
+          sessionStorage.setItem(newAccountKey, credential.user.uid);
           if (displayName) await updateProfile(credential.user, {displayName});
+          // Email y contraseña requieren verificación antes de recibir tokens.
+          try {await sendEmailVerification(credential.user);} catch (error) { console.warn('No se pudo enviar la verificación:',error.code); }
         } else {
           await signInWithEmailAndPassword(auth, email, password);
         }
@@ -183,18 +199,22 @@ loadLoginBranding();
       } catch (error) {
         feedback(authMessage(error));
       } finally {
+        authAttemptInProgress = false;
         button.disabled = false; button.textContent = mode === 'register' ? 'Crear cuenta' : 'Iniciar sesión';
       }
     });
 
     $('#googleButton').addEventListener('click', async event => {
       const button = event.currentTarget; button.disabled = true; feedback('Conectando con Google…', true);
+      authAttemptInProgress = true;
       try {
-        await signInWithPopup(auth, new GoogleAuthProvider());
+        const credential = await signInWithPopup(auth, new GoogleAuthProvider());
+        if (getAdditionalUserInfo(credential)?.isNewUser) sessionStorage.setItem(newAccountKey, credential.user.uid);
         location.replace('index.html');
       } catch (error) {
         feedback(authMessage(error));
       } finally {
+        authAttemptInProgress = false;
         button.disabled = false;
       }
     });
@@ -211,7 +231,7 @@ loadLoginBranding();
     });
 
     authReady.then(() => onAuthStateChanged(auth, user => {
-      if (user) location.replace('index.html');
+      if (user && !authAttemptInProgress) location.replace('index.html');
       else $('#loading').hidden = true;
     })).catch(() => {
       $('#loading').hidden = true;
