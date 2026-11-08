@@ -2,13 +2,13 @@
 
 ## Iniciar localmente
 
-1. Revoca cualquier clave de OpenRouter que se haya compartido en un chat o comando; crea una nueva.
+1. Revoca cualquier clave de Nexus AI que se haya compartido en un chat o comando; crea una nueva.
 2. En la terminal de esta carpeta, introduce la clave cuando `read -s` la solicite. No se muestra ni se guarda en el historial:
 
    ```sh
-   read -s -p "Nueva clave de OpenRouter: " OPENROUTER_API_KEY
+   read -s -p "Nueva clave de Nexus AI: " Nexus AI
    printf '\n'
-   export OPENROUTER_API_KEY
+   export Nexus AI
    PORT=8001 python3 server.py
    ```
 
@@ -25,11 +25,11 @@ export CLIPDROP_API_KEY
 PORT=8001 python3 server.py
 ```
 
-El proxy solo escucha en `127.0.0.1`. No pongas la clave en `server.py`, `.env`, ni el frontend; no cambies el servidor a `0.0.0.0`. El chat ofrece `Nexus-St`, `Nexus-Pro` y `Nexus-Basic`, alias de modelos `:free` de OpenRouter. La disponibilidad gratuita depende de OpenRouter.
+El proxy solo escucha en `127.0.0.1`. No pongas la clave en `server.py`, `.env`, ni el frontend; no cambies el servidor a `0.0.0.0`. El chat ofrece `Nexus-St`, `Nexus-Pro` y `Nexus-Basic`, alias de modelos `:free` de Nexus AI. La disponibilidad gratuita depende de Nexus AI.
 
 ## Cuota e historial
 
-El plan Gratis permite hasta 1.000.000 tokens de entrada y salida por UID de Firebase. El servidor lee el usage reportado por OpenRouter y guarda el contador en `.nexus_usage.sqlite3` para aplicar la cuota. Este contador reside en el disco local: para producción con varias instancias debe migrarse a un servicio compartido y transaccional.
+El plan Gratis permite hasta 1.000.000 tokens de entrada y salida por UID de Firebase. El servidor lee el usage reportado por Nexus AI y guarda el contador en `.nexus_usage.sqlite3` para aplicar la cuota. Este contador reside en el disco local: para producción con varias instancias debe migrarse a un servicio compartido y transaccional.
 
 Las conversaciones se guardan bajo `users/{uid}/chatSessions` y vencen cinco días después de la última actividad. La app elimina las caducadas cuando el usuario inicia sesión. Para borrado automático aunque no vuelva a entrar, habilita Firestore TTL para el grupo de colecciones `chatSessions`, campo `expiresAt`.
 
