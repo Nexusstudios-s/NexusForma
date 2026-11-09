@@ -2811,7 +2811,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         remove.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6"/></svg><span>Eliminar propuesta</span>';
         remove.setAttribute('aria-label', `Eliminar propuesta: ${item.title || 'sin título'}`);
         remove.addEventListener('click', async () => {
-          if (!window.confirm('¿Eliminar esta propuesta y su respuesta? No podrás recuperarlas.')) return;
+          if (!(await window.nexusConfirmFeedback({title: item.title || 'Propuesta', description: 'Se eliminará tu propuesta y también la respuesta del equipo, si existe.'}))) return;
           remove.disabled = true;
           try {
             if (item.source === 'nexus-backup') {

@@ -190,6 +190,8 @@ function normalizeSettings(data = {}) {
       price: String(item.price ?? ''),
       currency: ['ARS', 'USD', 'COP'].includes(item.currency) ? item.currency : 'ARS',
       enabled: item.enabled === true,
+      backgroundImage: safeHttpsUrl(item.backgroundImage || ''),
+      backgroundVideo: safeHttpsUrl(item.backgroundVideo || ''),
     }));
   const savedCustomization = data.webCustomization || data.personalization || {};
   return { models, paymentMethods, plans, planFeatures, comparisonRows, tokenPackages, webCustomization: normalizeWebCustomization(savedCustomization) };
@@ -1831,7 +1833,14 @@ function renderTokenPackageSettings() {
     currency.value = tokenPackage.currency;
     currencyLabel.append(currency);
     const description = makeInput('Descripción', 'description', tokenPackage.description, 'text', {maxLength: 180});
-    row.append(heading, name.label, tokens.label, price.label, currencyLabel, description.label);
+    const imageField = makeInput('Imagen o GIF de fondo (URL HTTPS)', 'backgroundImage', tokenPackage.backgroundImage || '', 'url', {maxLength: 2048});
+    imageField.input.placeholder = 'https://ejemplo.com/portada.gif';
+    const videoField = makeInput('Video de fondo (YouTube o MP4 HTTPS)', 'backgroundVideo', tokenPackage.backgroundVideo || '', 'url', {maxLength: 2048});
+    videoField.input.placeholder = 'https://www.youtube.com/watch?v=...';
+    const mediaNote = document.createElement('small');
+    mediaNote.className = 'nx-package-media-note';
+    mediaNote.textContent = 'Video tiene prioridad sobre la imagen. Usa enlaces públicos HTTPS; YouTube reproduce sin sonido.';
+    row.append(heading, name.label, tokens.label, price.label, currencyLabel, description.label, imageField.label, videoField.label, mediaNote);
     container.append(row);
   }
 }
@@ -1860,6 +1869,8 @@ function readTokenPackageSettings() {
       price: priceValue ? String(price) : '',
       currency: get('currency').value,
       enabled,
+      backgroundImage: safeHttpsUrl(get('backgroundImage').value.trim()),
+      backgroundVideo: safeHttpsUrl(get('backgroundVideo').value.trim()),
     };
   });
 }
@@ -1878,7 +1889,28 @@ function renderTokenPackages() {
   }
   for (const tokenPackage of packages) {
     const card = document.createElement('article');
-    card.className = 'token-package-card';
+    card.className = 'token-package-card nx-token-media-card';
+    const bgVideo = safeHttpsUrl(tokenPackage.backgroundVideo || '');
+    const bgImage = safeHttpsUrl(tokenPackage.backgroundImage || '');
+    if (bgVideo || bgImage) {
+      const layer = document.createElement('div');
+      layer.className = 'nx-token-media-layer';
+      const yt = bgVideo.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+      if (yt) {
+        const frame = document.createElement('iframe');
+        frame.src = `https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&mute=1&loop=1&playlist=${yt[1]}&controls=0&playsinline=1`;
+        frame.title = 'Fondo animado del paquete'; frame.loading = 'lazy'; frame.tabIndex = -1;
+        frame.allow = 'autoplay; encrypted-media'; layer.append(frame);
+      } else if (bgVideo && /\.(?:mp4|webm)(?:$|[?#])/i.test(bgVideo)) {
+        const video = document.createElement('video');
+        video.src = bgVideo; video.autoplay = true; video.loop = true; video.muted = true;
+        video.playsInline = true; video.preload = 'none'; layer.append(video);
+      } else if (bgImage) {
+        const image = document.createElement('img'); image.src = bgImage; image.alt = '';
+        image.loading = 'lazy'; layer.append(image);
+      }
+      if (layer.childElementCount) card.append(layer);
+    }
     const title = document.createElement('h3');
     title.textContent = tokenPackage.name;
     const quantity = document.createElement('strong');
@@ -2769,7 +2801,7 @@ function renderAdminFeedbackDetail(item) {
   remove.className = 'nexus-admin-feedback-delete';
   remove.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6"/></svg><span>Eliminar definitivamente</span>';
   remove.addEventListener('click', async () => {
-    if (!window.confirm(`¿Eliminar definitivamente «${item.title || 'esta propuesta'}» del panel y del historial del usuario?`)) return;
+    if (!(await window.nexusConfirmFeedback({title: item.title || 'Propuesta', description: 'Se borrará del panel admin y del historial del usuario. No se puede recuperar.'}))) return;
     remove.disabled = true;
     try {
       if (item.source === 'nexus-backup') {
@@ -2822,6 +2854,7 @@ function renderNotifications(items) {
   $('#notificationCount').textContent = unread > 9 ? '9+' : String(unread);
   $('#notificationCount').hidden = unread === 0;
   $('#notificationLabel').textContent = `${unread} nuevas`;
+  window.dispatchEvent(new CustomEvent('nx-local-notifications', { detail: {unread} }));
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'notification-empty';
@@ -2952,7 +2985,7 @@ document.querySelector('#addTokenPackage').addEventListener('click', () => {
   const suffix = globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 10) || Date.now().toString(36);
   currentSettings.tokenPackages.push({
     id: `tokens-${suffix}`, name: 'Nuevo paquete', description: '', tokenAmount: 500_000,
-    price: '', currency: 'ARS', enabled: false,
+    price: '', currency: 'ARS', enabled: false, backgroundImage: '', backgroundVideo: '',
   });
   renderTokenPackageSettings();
 });
