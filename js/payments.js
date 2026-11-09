@@ -96,7 +96,7 @@ function normalizeSettings(data = {}) {
   for (const model of savedModels) {
     if (!model?.id || MODEL_DEFAULTS.some(item => item.id === model.id)) continue;
     models.push({
-      id: model.id, name: model.name || model.id, providerModel: model.providerModel || '',
+      id: model.id, name: model.name || model.id, providerModel: model.providerModel || '', provider: model.provider || 'openrouter',
       tier: model.tier || 'free', tokenLimit: Number(model.tokenLimit) || 0,
       imageUrl: model.imageUrl || '', description: model.description || '', vision: model.vision === true,
       audio: model.audio === true, enabled: model.enabled !== false,
@@ -987,16 +987,29 @@ function renderModelSettings() {
       idLabel.append(idInput);
     }
     const providerLabel = document.createElement('label');
-    providerLabel.textContent = 'Modelo conversacional de OpenRouter (no TTS)';
+    providerLabel.textContent = 'Proveedor de IA';
+    const providerSelect = document.createElement('select');
+    providerSelect.className = 'profile-name-input';
+    providerSelect.dataset.modelField = 'provider';
+    for (const [value, label] of [['openrouter','OpenRouter'], ['openai','OpenAI · ChatGPT'], ['gemini','Google · Gemini'], ['groq','Groq']]) {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; providerSelect.append(option);
+    }
+    providerSelect.value = ['openrouter','openai','gemini','groq'].includes(model.provider) ? model.provider : 'openrouter';
+    providerLabel.append(providerSelect);
+    const providerModelLabel = document.createElement('label');
+    providerModelLabel.textContent = 'Identificador del modelo en ese proveedor';
     const providerInput = document.createElement('input');
     providerInput.className = 'profile-name-input';
     providerInput.dataset.modelField = 'providerModel';
-    providerInput.placeholder = 'proveedor/modelo:free';
+    providerInput.placeholder = 'Ej. gpt-4o-mini, gemini-2.5-flash o llama-3.3-70b-versatile';
     providerInput.value = model.providerModel || '';
-    providerLabel.append(providerInput);
+    providerModelLabel.append(providerInput);
     const providerHelp = document.createElement('small');
     providerHelp.className = 'admin-model-help';
-    providerHelp.textContent = 'Este campo conecta un modelo de chat. No admite Fish Audio/TTS ni modelos de generación de imágenes.';
+    providerHelp.textContent = 'OpenRouter: liquid/lfm-3-1.7b:free · OpenAI: gpt-4o-mini · Gemini: gemini-2.5-flash · Groq: llama-3.3-70b-versatile. Este catálogo es solo para chat; Veo se configura abajo.';
+    providerSelect.addEventListener('change', () => {
+      providerInput.placeholder = ({openrouter:'liquid/lfm-3-1.7b:free',openai:'gpt-4o-mini',gemini:'gemini-2.5-flash',groq:'llama-3.3-70b-versatile'})[providerSelect.value];
+    });
     const tierLabel = document.createElement('label');
     tierLabel.textContent = 'Nivel de acceso';
     const tierInput = document.createElement('select');
@@ -1062,7 +1075,7 @@ function renderModelSettings() {
     enabledLabel.append(enabledInput, enabledText);
     content.append(heading);
     if (idLabel) content.append(idLabel);
-    content.append(nameLabel, providerLabel, providerHelp, tierLabel, capabilityOptions, tokenLabel, imageLabel, descriptionLabel, enabledLabel);
+    content.append(nameLabel, providerLabel, providerModelLabel, providerHelp, tierLabel, capabilityOptions, tokenLabel, imageLabel, descriptionLabel, enabledLabel);
     row.append(preview, content);
     container.append(row);
     const initialImage = safeHttpsUrl(model.imageUrl || '');
@@ -1080,9 +1093,12 @@ function readModelSettings() {
     const id = (get('id')?.value || row.dataset.modelId).trim();
     if (!/^Nexus-?[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/.test(id)) throw new Error(`ID de modelo no válido: ${id}`);
     const providerModel = get('providerModel').value.trim();
+    const provider = get('provider').value;
     const enabled = get('enabled').checked;
-    if (providerModel && !/^[A-Za-z0-9._-]+\/[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(providerModel)) throw new Error(`Configura un ID de OpenRouter válido para ${id}.`);
-    if (enabled && !providerModel) throw new Error(`Configura un modelo conversacional de OpenRouter para ${id} antes de activarlo.`);
+    if (!['openrouter','openai','gemini','groq'].includes(provider)) throw new Error(`Proveedor no válido para ${id}.`);
+    const validProviderModel = provider === 'openrouter' ? /^[A-Za-z0-9._-]+\/[A-Za-z0-9][A-Za-z0-9._:-]*$/ : /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/;
+    if (providerModel && !validProviderModel.test(providerModel)) throw new Error(`El identificador del proveedor no es válido para ${id}.`);
+    if (enabled && !providerModel) throw new Error(`Configura un modelo conversacional para ${id} antes de activarlo.`);
     const isTextToSpeech = /^fish-audio\//i.test(providerModel) || /\/(?:tts|text-to-speech)(?:[-/:.]|$)/i.test(providerModel);
     if (enabled && isTextToSpeech) disabledVoiceModels.push(id);
     const isEnabled = enabled && !isTextToSpeech;
@@ -1093,6 +1109,7 @@ function readModelSettings() {
       id,
       name: get('name').value.trim().slice(0, 50) || base.name,
       providerModel,
+      provider,
       tier: get('tier').value,
       tokenLimit,
       vision: get('vision').checked,
@@ -2745,6 +2762,32 @@ function renderAdminFeedbackDetail(item) {
     savedResponse.textContent = `Respuesta enviada: ${item.response}`;
     detail.append(savedResponse);
   }
+  const removeBar = document.createElement('div');
+  removeBar.className = 'nexus-admin-feedback-remove-bar';
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'nexus-admin-feedback-delete';
+  remove.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6"/></svg><span>Eliminar definitivamente</span>';
+  remove.addEventListener('click', async () => {
+    if (!window.confirm(`¿Eliminar definitivamente «${item.title || 'esta propuesta'}» del panel y del historial del usuario?`)) return;
+    remove.disabled = true;
+    try {
+      if (item.source === 'nexus-backup') {
+        await fetchAdminFeedbackBackup(`/api/admin/feedback/${encodeURIComponent(item.id)}`, {method: 'DELETE'});
+      } else {
+        await deleteDoc(doc(db, 'feedback', item.id));
+      }
+      toast('Propuesta eliminada definitivamente.');
+      selectedFeedback = null;
+      await loadAdminFeedback();
+    } catch (error) {
+      console.error('No se pudo borrar el feedback:', error);
+      toast(error.code === 'permission-denied' ? 'Firestore bloqueó el borrado. Revisa las reglas de seguridad.' : (error.message || 'No se pudo borrar.'));
+      remove.disabled = false;
+    }
+  });
+  removeBar.append(remove);
+  detail.append(removeBar);
 }
 
 async function saveAdminFeedbackReview(item, status, response) {
@@ -2887,6 +2930,7 @@ document.querySelector('#addAiModel').addEventListener('click', () => {
     id: modelId,
     name: modelId,
     providerModel: '',
+    provider: 'openrouter',
     tier: 'free',
     tokenLimit: 0,
     imageUrl: '',

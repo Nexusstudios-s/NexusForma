@@ -4,6 +4,50 @@ import { auth, authReady, db } from './firebase.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
     const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+    // Tarjetas luminosas que siguen el mouse sin oscurecer el diseño.
+    // Delegación de eventos: también funciona con mini agentes renderizados después.
+    (() => {
+      const canFollow = window.matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)');
+      if (!canFollow.matches) return;
+      const selector = '.mini-agent-template-card, .mini-agent-card, .home-example, .home-action-card, .home-agent-list button, .home-resume-button';
+      let active = null;
+      let pending = null;
+      let frameId = 0;
+      function clearActive() {
+        if (!active) return;
+        active.classList.remove('nexus-follow-active');
+        active.style.removeProperty('--nexus-tilt-x');
+        active.style.removeProperty('--nexus-tilt-y');
+        active = null;
+      }
+      function draw() {
+        frameId = 0;
+        if (!pending) return;
+        const {card, x, y} = pending;
+        pending = null;
+        if (card !== active) { clearActive(); active = card; active.classList.add('nexus-follow-active'); }
+        const rect = card.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        const relX = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
+        const relY = Math.max(0, Math.min(1, (y - rect.top) / rect.height));
+        card.style.setProperty('--nexus-shine-x', `${Math.round(relX * 100)}%`);
+        card.style.setProperty('--nexus-shine-y', `${Math.round(relY * 100)}%`);
+        card.style.setProperty('--nexus-tilt-x', `${((.5 - relY) * 4.5).toFixed(2)}deg`);
+        card.style.setProperty('--nexus-tilt-y', `${((relX - .5) * 4.5).toFixed(2)}deg`);
+      }
+      for (const view of $$('#view-home, #view-agents')) {
+        view.addEventListener('pointermove', event => {
+          if (event.pointerType !== 'mouse') return;
+          const card = event.target.closest(selector);
+          if (!card || !view.contains(card)) { pending = null; clearActive(); return; }
+          pending = {card, x: event.clientX, y: event.clientY};
+          if (!frameId) frameId = requestAnimationFrame(draw);
+        }, {passive: true});
+        view.addEventListener('pointerleave', () => { pending = null; clearActive(); }, {passive: true});
+      }
+      canFollow.addEventListener?.('change', () => { if (!canFollow.matches) { pending = null; clearActive(); } });
+    })();
+
     const toast = (message) => { const node = $('#toast'); node.textContent = message; node.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.remove('show'), 2800); };
 
 const themeToggle = $('#themeToggle');
@@ -342,6 +386,7 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
     let userMiniAgents = [];
     let miniAgentEditingId = '';
     let chatDeleteResolver = null;
+    let chatAnswerDeleteResolver = null;
     let pendingChatImages = [];
     let pendingChatAudio = null;
     let pendingChatFiles = [];
@@ -1942,8 +1987,149 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         article.append(content);
       }
       $('#chatMessages').append(article);
+      if (role === 'assistant' && !thinking && chatHistory[chatHistory.length - 1]?.role === 'assistant' && chatHistory[chatHistory.length - 1]?.content === text) {
+        article.dataset.hidx = String(chatHistory.length - 1);
+        installAssistantMessageActions(article);
+      }
       $('#chatMessages').scrollTop = $('#chatMessages').scrollHeight;
       return article;
+    }
+
+    function renderChatTimeline() {
+      const view = $('#chatMessages');
+      view.replaceChildren();
+      chatWelcome.hidden = chatHistory.length > 0;
+      if (!chatHistory.length) view.append(chatWelcome);
+      for (let i = 0; i < chatHistory.length; i++) {
+        const entry = chatHistory[i];
+        const item = appendChatMessage(entry.role, entry.content);
+        item.dataset.hidx = String(i);
+      }
+      view.scrollTop = view.scrollHeight;
+    }
+
+    // Mantener intactas las imágenes, audios y archivos ya renderizados al eliminar
+    // respuestas o regenerar. Reconstruir todo el DOM los haría desaparecer.
+    function trimChatDom(startIndex) {
+      const nodes = [...$('#chatMessages').querySelectorAll(':scope > .chat-message')];
+      for (const node of nodes) {
+        const value = Number(node.dataset.hidx);
+        if (Number.isInteger(value) && value >= startIndex) node.remove();
+      }
+      chatWelcome.hidden = chatHistory.length > 0;
+      if (!chatHistory.length) $('#chatMessages').append(chatWelcome);
+    }
+
+    function removeOneChatDom(article, deletedIndex) {
+      article.remove();
+      for (const node of $('#chatMessages').querySelectorAll(':scope > .chat-message')) {
+        const value = Number(node.dataset.hidx);
+        if (Number.isInteger(value) && value > deletedIndex) node.dataset.hidx = String(value - 1);
+      }
+      chatWelcome.hidden = chatHistory.length > 0;
+      if (!chatHistory.length) $('#chatMessages').append(chatWelcome);
+    }
+
+    async function eraseSavedChatRange(entries) {
+      if (!activeChatUser || !activeChatSessionId) return;
+      const session = doc(db, 'users', activeChatUser.uid, 'chatSessions', activeChatSessionId);
+      for (const entry of entries) {
+        if (entry._id) await deleteDoc(doc(session, 'messages', entry._id));
+      }
+    }
+
+    // Una confirmación accesible, con foco administrado por <dialog> y Escape para cancelar.
+    function settleChatAnswerDeletion(confirmed) {
+      const resolve = chatAnswerDeleteResolver;
+      chatAnswerDeleteResolver = null;
+      if ($('#chatAnswerDeleteDialog').open) $('#chatAnswerDeleteDialog').close();
+      resolve?.(confirmed);
+    }
+
+    function confirmChatAnswerDeletion(entry) {
+      if (!entry || chatAnswerDeleteResolver) return Promise.resolve(false);
+      const excerpt = String(entry.content || '').replace(/\s+/g, ' ').trim();
+      $('#chatAnswerDeletePreview').textContent = excerpt ? excerpt.slice(0, 240) + (excerpt.length > 240 ? '…' : '') : 'Respuesta sin texto';
+      return new Promise(resolve => {
+        chatAnswerDeleteResolver = resolve;
+        $('#chatAnswerDeleteDialog').showModal();
+        $('#chatAnswerDeleteCancel').focus();
+      });
+    }
+
+    $('#chatAnswerDeleteClose').addEventListener('click', () => settleChatAnswerDeletion(false));
+    $('#chatAnswerDeleteCancel').addEventListener('click', () => settleChatAnswerDeletion(false));
+    $('#chatAnswerDeleteAccept').addEventListener('click', () => settleChatAnswerDeletion(true));
+    $('#chatAnswerDeleteDialog').addEventListener('cancel', event => { event.preventDefault(); settleChatAnswerDeletion(false); });
+    $('#chatAnswerDeleteDialog').addEventListener('close', () => settleChatAnswerDeletion(false));
+
+    function installAssistantMessageActions(article) {
+      if (article.querySelector('.nexus-ai-answer-actions')) return;
+      const content = article.querySelector('.chat-assistant-content');
+      if (!content) return;
+      const actions = document.createElement('div');
+      actions.className = 'nexus-ai-answer-actions';
+      const make = (text, icon, label, callback) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'nexus-ai-answer-button';
+        button.title = label;
+        button.setAttribute('aria-label', label);
+        button.innerHTML = icon + '<span>' + text + '</span>';
+        button.addEventListener('click', callback);
+        actions.append(button);
+        return button;
+      };
+      const indexNow = () => Number(article.dataset.hidx);
+      make('Regenerar', '<svg viewBox="0 0 24 24"><path d="M3 11a9 9 0 0 1 15-6l3 3M21 3v5h-5M21 13a9 9 0 0 1-15 6l-3-3M3 21v-5h5"/></svg>', 'Generar una nueva respuesta', async () => {
+        if (chatBusy || chatHistoryBusy) return toast('Espera a que termine la respuesta actual.');
+        const idx = indexNow();
+        if (chatHistory[idx]?.role !== 'assistant') return;
+        let promptIndex = idx - 1;
+        while (promptIndex >= 0 && chatHistory[promptIndex]?.role !== 'user') promptIndex--;
+        if (promptIndex < 0) return toast('No se encontró la pregunta original.');
+        if (Date.now() < chatNextAllowedAt) return toast('Espera un momento para volver a generar la respuesta.');
+        if (idx < chatHistory.length - 1 && !window.confirm('Regenerar desde esta respuesta borrará los mensajes posteriores de la conversación. ¿Continuar?')) return;
+        const promptEntry = {...chatHistory[promptIndex]};
+        const removed = chatHistory.slice(promptIndex);
+        chatHistoryBusy = true;
+        syncChatButton();
+        try { await eraseSavedChatRange(removed); }
+        catch (error) { console.error(error); toast('No se pudo actualizar el historial guardado.'); chatHistoryBusy = false; syncChatButton(); return; }
+        chatHistory.splice(promptIndex);
+        trimChatDom(promptIndex);
+        pendingChatFiles = [...(promptEntry.files || [])].slice(0, CHAT_MAX_FILES);
+        renderChatAttachments();
+        chatHistoryBusy = false;
+        syncChatButton();
+        await sendChatMessage(promptEntry.content);
+      });
+      make('Preguntar', '<svg viewBox="0 0 24 24"><path d="M8 10h8M8 14h5M20 11.5a8 8 0 0 1-8.5 8H6l-3 2 1-4A8 8 0 1 1 20 11.5Z"/></svg>', 'Hacer una pregunta sobre esta respuesta', () => {
+        const entry = chatHistory[indexNow()];
+        if (!entry || entry.role !== 'assistant') return;
+        const excerpt = entry.content.replace(/\s+/g, ' ').slice(0, 160);
+        chatInput.value = `Tengo una pregunta sobre tu respuesta: «${excerpt}${entry.content.length > 160 ? '…' : ''}»\n\n`;
+        chatInput.dispatchEvent(new Event('input', {bubbles:true}));
+        chatInput.focus();
+        chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
+      });
+      make('Borrar', '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6"/></svg>', 'Borrar esta respuesta de la conversación', async () => {
+        if (chatBusy || chatHistoryBusy) return toast('Espera a que termine la respuesta actual.');
+        const idx = indexNow();
+        const entry = chatHistory[idx];
+        if (!entry || entry.role !== 'assistant') return;
+        if (!await confirmChatAnswerDeletion(entry)) return;
+        // Si el usuario cambió de conversación durante el modal, no borrar otra entrada.
+        if (chatBusy || chatHistoryBusy || chatHistory[idx] !== entry || !article.isConnected) return;
+        chatHistoryBusy = true; syncChatButton();
+        try { await eraseSavedChatRange([entry]); }
+        catch (error) { console.error(error); toast('No se pudo eliminar la respuesta guardada.'); chatHistoryBusy = false; syncChatButton(); return; }
+        chatHistory.splice(idx, 1);
+        removeOneChatDom(article, idx);
+        chatHistoryBusy = false; syncChatButton();
+        toast('Respuesta eliminada.');
+      });
+      content.append(actions);
     }
 
     function readFileAsDataUrl(file) {
@@ -2156,6 +2342,8 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
         const content = thinking.querySelector('.chat-assistant-content');
         content.replaceChildren();
         const answerNode = document.createElement('div'); answerNode.className = 'chat-message-text'; renderChatAnswer(answerNode, savedAnswer); content.append(answerNode);
+        thinking.dataset.hidx = String(chatHistory.length - 1);
+        installAssistantMessageActions(thinking);
       } catch (error) {
         const content = thinking.querySelector('.chat-assistant-content'); content.replaceChildren();
         const stopped = error?.name === 'AbortError';
@@ -2617,6 +2805,30 @@ themeToggle.addEventListener('click', () => setTheme(document.documentElement.da
           waiting.textContent = 'El equipo está revisando tu propuesta.';
           card.append(waiting);
         }
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'nexus-feedback-delete';
+        remove.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6"/></svg><span>Eliminar propuesta</span>';
+        remove.setAttribute('aria-label', `Eliminar propuesta: ${item.title || 'sin título'}`);
+        remove.addEventListener('click', async () => {
+          if (!window.confirm('¿Eliminar esta propuesta y su respuesta? No podrás recuperarlas.')) return;
+          remove.disabled = true;
+          try {
+            if (item.source === 'nexus-backup') {
+              await fetchFeedbackBackup(`/api/feedback/${encodeURIComponent(item.id)}`, {method: 'DELETE'});
+            } else {
+              if (item.uid !== activeChatUser?.uid) throw new Error('No puedes borrar una propuesta ajena.');
+              await deleteDoc(doc(db, 'feedback', item.id));
+            }
+            toast('Propuesta eliminada.');
+            await loadMyFeedback();
+          } catch (error) {
+            console.error('Error al borrar feedback:', error);
+            toast(error.code === 'permission-denied' ? 'Firebase no permite eliminar la propuesta: revisa las reglas de Firestore.' : (error.message || 'No se pudo eliminar.'));
+            remove.disabled = false;
+          }
+        });
+        card.append(remove);
         list.append(card);
       }
     }
