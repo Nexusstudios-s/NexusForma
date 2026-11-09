@@ -11,6 +11,7 @@ import unicodedata
 import time
 import uuid
 import zipfile
+import threading
 from email.parser import BytesParser
 from email.policy import default as email_policy
 from datetime import date, datetime, timedelta, timezone
@@ -52,6 +53,11 @@ REFERRAL_DEFAULTS = {
     'maxClaimsPerInviter': 100, 'claimWindowDays': 7,
     'requireVerifiedEmail': True,
 }
+AI_PROVIDERS = ('openrouter', 'openai', 'gemini', 'groq')
+AI_PROVIDER_ENV = {'openrouter':'OPENROUTER_API_KEY','openai':'OPENAI_API_KEY', 'gemini':'GEMINI_API_KEY', 'groq':'GROQ_API_KEY'}
+GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
+VIDEO_DEFAULTS = {'enabled': False, 'model': 'gemini-omni-1.1-flash', 'dailyLimit': 1, 'allowedPlans': ['pro','premium','studio']}
+
 REFERRAL_CODE_PATTERN = re.compile(r'^NX-[A-HJ-NP-Z2-9]{8}$')
 
 MODEL_ALIASES = {
@@ -242,6 +248,20 @@ def initialize_usage_db():
                 id INTEGER PRIMARY KEY CHECK (id = 1), config_json TEXT NOT NULL
             )
         """)
+        connection.execute("""CREATE TABLE IF NOT EXISTS ai_provider_keys (
+            provider TEXT PRIMARY KEY, secret_cipher TEXT NOT NULL, updated_at TEXT NOT NULL
+        )""")
+        connection.execute("""CREATE TABLE IF NOT EXISTS ai_video_jobs (
+            id TEXT PRIMARY KEY, user_id TEXT NOT NULL, prompt TEXT NOT NULL,
+            model TEXT NOT NULL, operation TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
+            result_uri TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )""")
+        connection.execute('CREATE INDEX IF NOT EXISTS ai_video_user_time ON ai_video_jobs(user_id, created_at)')
+        connection.execute('CREATE TABLE IF NOT EXISTS ai_video_assets (job_id TEXT PRIMARY KEY, mp4 BLOB NOT NULL)')
+        connection.execute("""CREATE TABLE IF NOT EXISTS ai_video_settings (
+            id INTEGER PRIMARY KEY CHECK(id=1), config_json TEXT NOT NULL
+        )""")
         connection.execute('CREATE INDEX IF NOT EXISTS usage_events_user_date ON usage_events (user_id, event_at)')
         connection.execute('''
             INSERT OR IGNORE INTO token_usage_cycles
@@ -391,6 +411,7 @@ def build_model_registry(app_config=None):
             'id': model_id,
             'name': MODEL_LABELS.get(model_id, model_id),
             'providerModel': provider_model,
+            'provider': 'openrouter',
             'tier': MODEL_DEFAULT_TIERS.get(model_id, 'free'),
             'tokenLimit': 0,
             'description': '',
@@ -418,7 +439,11 @@ def build_model_registry(app_config=None):
         merged = {**registry.get(model_id, {}), **model}
         provider_model = merged.get('providerModel', '')
         tier = merged.get('tier', 'free')
-        if not isinstance(provider_model, str) or not re.fullmatch(r'[A-Za-z0-9._-]+/[A-Za-z0-9][A-Za-z0-9._:-]*', provider_model):
+        provider = merged.get('provider', 'openrouter')
+        if provider not in AI_PROVIDERS:
+            continue
+        provider_pattern = r'[A-Za-z0-9._-]+/[A-Za-z0-9][A-Za-z0-9._:-]*' if provider == 'openrouter' else r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}'
+        if not isinstance(provider_model, str) or not re.fullmatch(provider_pattern, provider_model):
             continue
         if tier not in ('free', 'pro', 'premium'):
             continue
@@ -430,6 +455,7 @@ def build_model_registry(app_config=None):
             'id': model_id,
             'name': str(merged.get('name') or model_id)[:50],
             'providerModel': provider_model,
+            'provider': provider,
             'tier': tier,
             'tokenLimit': token_limit,
             'description': str(merged.get('description') or '')[:180],
@@ -437,6 +463,208 @@ def build_model_registry(app_config=None):
             'audio': merged.get('audio') is True,
         }
     return registry
+
+
+# Los secretos nunca van a Firestore appConfig/public, JS ni a las respuestas JSON.
+def ai_cipher():
+    secret = os.environ.get('NEXUS_SECRETS_KEY', '').strip()
+    if not secret:
+        return None
+    try:
+        from cryptography.fernet import Fernet
+        return Fernet(secret.encode('ascii'))
+    except (ImportError, ValueError, TypeError):
+        return None
+
+
+def ai_provider_key(provider):
+    if provider not in AI_PROVIDERS:
+        return ''
+    # Un secreto administrado desde el panel tiene preferencia sobre el entorno.
+    cipher = ai_cipher()
+    if cipher:
+        with sqlite3.connect(USAGE_DB, timeout=10) as connection:
+            row = connection.execute('SELECT secret_cipher FROM ai_provider_keys WHERE provider = ?', (provider,)).fetchone()
+        if row:
+            try:
+                return cipher.decrypt(row[0].encode('ascii')).decode('utf-8')
+            except Exception:
+                return ''
+    return os.environ.get(AI_PROVIDER_ENV[provider], '').strip()
+
+
+def ai_provider_status():
+    result = {}
+    with sqlite3.connect(USAGE_DB, timeout=10) as connection:
+        saved = {r[0] for r in connection.execute('SELECT provider FROM ai_provider_keys')}
+    for provider in AI_PROVIDERS:
+        result[provider] = {'configured': bool(ai_provider_key(provider)),
+                            'source': 'panel' if provider in saved else ('entorno' if os.environ.get(AI_PROVIDER_ENV[provider], '').strip() else 'sin configurar')}
+    return {'providers': result, 'canSave': ai_cipher() is not None}
+
+
+def ai_video_config(app_config=None):
+    # Configuración solo editable desde la API administrativa verificada.
+    with sqlite3.connect(USAGE_DB, timeout=10) as conn:
+        row = conn.execute('SELECT config_json FROM ai_video_settings WHERE id=1').fetchone()
+    try:
+        raw = json.loads(row[0]) if row else None
+    except (ValueError, TypeError, json.JSONDecodeError):
+        raw = None
+    if not isinstance(raw, dict):
+        return VIDEO_DEFAULTS.copy()
+    model = raw.get('model', VIDEO_DEFAULTS['model'])
+    if not isinstance(model, str) or not model in ('gemini-omni-1.1-flash',):
+        model = VIDEO_DEFAULTS['model']
+    try:
+        daily_limit = int(raw.get('dailyLimit', 1))
+    except (ValueError, TypeError):
+        daily_limit = 1
+    allowed = raw.get('allowedPlans')
+    if not isinstance(allowed, list):
+        allowed = VIDEO_DEFAULTS['allowedPlans']
+    return {'enabled': raw.get('enabled') is True, 'model': model,
+            'dailyLimit': min(max(daily_limit, 1), 5),
+            'allowedPlans': [p for p in allowed if p in ('free','pro','premium','studio')][:4]}
+
+
+def ai_video_has_access(profile, identity, config):
+    if feedback_is_admin(identity):
+        return True
+    if parse_expiry(profile) and parse_expiry(profile) <= datetime.now(timezone.utc):
+        return 'free' in config['allowedPlans']
+    name = (profile or {}).get('planId') or {'Gratis': 'free', 'Pro':'pro', 'Premium':'premium', 'Estudio':'studio'}.get((profile or {}).get('plan'), 'free')
+    return name in config['allowedPlans']
+
+
+def call_ai_chat(model, system_prompt, messages, max_tokens, reasoning_effort='auto', web_search=False, temperature=0.7, referer=''):
+    provider = model.get('provider', 'openrouter')
+    key = ai_provider_key(provider)
+    if not key:
+        raise RuntimeError(f'No está configurada la clave API de {provider.upper()} en el servidor.')
+    model_id = model['providerModel']
+    if provider == 'gemini':
+        if web_search:
+            raise ValueError('La búsqueda web integrada de Nexus requiere OpenRouter. Desactívala para Gemini.')
+        contents = []
+        for item in messages:
+            role = 'model' if item['role'] == 'assistant' else 'user'
+            parts = item['content']
+            if isinstance(parts, str):
+                parts = [{'text': parts}]
+            else:
+                translated = []
+                for part in parts:
+                    if part.get('type') == 'text':
+                        translated.append({'text': part.get('text', '')})
+                    elif part.get('type') == 'image_url':
+                        source = part.get('image_url', {}).get('url', '')
+                        match = re.fullmatch(r'data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)', source)
+                        if match:
+                            translated.append({'inlineData': {'mimeType': match.group(1), 'data': match.group(2)}})
+                    elif part.get('type') == 'input_audio':
+                        mime = {'wav':'audio/wav','mp3':'audio/mpeg'}.get(part.get('input_audio', {}).get('format'))
+                        if mime:
+                            translated.append({'inlineData': {'mimeType': mime, 'data': part['input_audio']['data']}})
+                parts = translated
+            contents.append({'role': role, 'parts': parts})
+        payload = {'systemInstruction': {'parts': [{'text': system_prompt}]}, 'contents': contents,
+                   'generationConfig': {'maxOutputTokens': max_tokens, 'temperature': temperature}}
+        url = f'{GEMINI_API_BASE}/models/{model_id}:generateContent'
+        headers = {'Content-Type': 'application/json', 'x-goog-api-key': key}
+    else:
+        if web_search and provider != 'openrouter':
+            raise ValueError('La búsqueda web integrada solo está disponible con modelos OpenRouter.')
+        payload = {'model': model_id, 'messages': [{'role': 'system', 'content': system_prompt}, *messages]}
+        reasoning_model = provider == 'openai' and re.match(r'(?:o[1-9]|gpt-[56789])', model_id, re.I)
+        payload['max_completion_tokens' if reasoning_model else 'max_tokens'] = max_tokens
+        if provider == 'openrouter':
+            if reasoning_effort != 'auto':
+                payload['reasoning'] = {'effort': reasoning_effort}
+            else:
+                payload['temperature'] = temperature
+            if web_search:
+                payload['plugins'] = [{'id': 'web', 'max_results': 5}]
+        elif provider == 'openai':
+            if reasoning_model and reasoning_effort != 'auto':
+                payload['reasoning_effort'] = reasoning_effort
+            if not reasoning_model:
+                payload['temperature'] = temperature
+        else:
+            payload['temperature'] = temperature
+        url = {'openrouter': OPENROUTER_URL,
+               'openai': 'https://api.openai.com/v1/chat/completions',
+               'groq': 'https://api.groq.com/openai/v1/chat/completions'}[provider]
+        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {key}'}
+        if provider == 'openrouter':
+            headers.update({'HTTP-Referer': referer or 'https://nexusformas.vercel.app', 'X-Title':'Nexus AI'})
+    request = Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
+    with urlopen(request, timeout=100) as response:
+        result = json.loads(response.read())
+    if provider != 'gemini':
+        return result
+    candidates = result.get('candidates') or []
+    parts = ((candidates[0].get('content') or {}).get('parts') or []) if candidates else []
+    answer = ''.join(str(p.get('text') or '') for p in parts if isinstance(p, dict))
+    usage = result.get('usageMetadata') or {}
+    prompt_tokens = usage.get('promptTokenCount')
+    completion_tokens = usage.get('totalTokenCount', 0) - prompt_tokens if isinstance(prompt_tokens, int) and isinstance(usage.get('totalTokenCount'), int) else usage.get('candidatesTokenCount')
+    return {'choices': [{'message': {'content': answer, 'annotations': []}}],
+            'usage': {'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens}}
+
+
+def run_gemini_omni_video(job_id, prompt, ratio, duration, model, api_key):
+    """Genera un MP4 mediante Gemini Interactions API y lo guarda privadamente.
+
+    El endpoint devuelve output_video.data en base64. No se aceptan URLs de terceros.
+    """
+    try:
+        description = f'{prompt}\n\nDuración deseada: aproximadamente {duration} segundos.'
+        body = {'model': model, 'input': description,
+                'response_format': {'type': 'video', 'aspect_ratio': ratio, 'resolution': '720p'}}
+        request = Request(f'{GEMINI_API_BASE}/interactions', data=json.dumps(body).encode('utf-8'),
+                          headers={'Content-Type': 'application/json','x-goog-api-key': api_key}, method='POST')
+        with urlopen(request, timeout=500) as response:
+            result = json.loads(response.read(92*1024*1024 + 1))
+        # Algunas ejecuciones de Interactions devuelven un estado consultable.
+        for _ in range(60):
+            video = result.get('output_video') or {}
+            if isinstance(video, dict) and isinstance(video.get('data'), str) and video['data']:
+                break
+            if result.get('status') in ('failed','cancelled'):
+                raise RuntimeError(str(result.get('error') or 'El proveedor no pudo crear el video.')[:230])
+            interaction_id = str(result.get('id') or '')
+            if not re.fullmatch(r'[A-Za-z0-9_-]{6,128}', interaction_id) or result.get('status') not in ('pending','in_progress','running','processing'):
+                raise RuntimeError('Gemini no devolvió datos de video; revisa el acceso al modelo.')
+            time.sleep(8)
+            with urlopen(Request(f'{GEMINI_API_BASE}/interactions/{interaction_id}',
+                                 headers={'x-goog-api-key': api_key}), timeout=60) as response:
+                result = json.loads(response.read(92*1024*1024 + 1))
+        else:
+            raise RuntimeError('La generación de Gemini superó el tiempo máximo.')
+        mp4 = base64.b64decode(result['output_video']['data'], validate=True)
+        if not mp4 or len(mp4) > 60*1024*1024 or b'ftyp' not in mp4[:16]:
+            raise RuntimeError('El proveedor devolvió un video no válido o demasiado grande (máx. 60 MB).')
+        with sqlite3.connect(USAGE_DB, timeout=30) as conn:
+            conn.execute('INSERT OR REPLACE INTO ai_video_assets(job_id,mp4) VALUES(?,?)', (job_id,mp4))
+            conn.execute("UPDATE ai_video_jobs SET status='ready',error='',updated_at=? WHERE id=?",
+                         (datetime.now(timezone.utc).isoformat(), job_id))
+            conn.commit()
+    except Exception as exc:
+        error = 'Gemini no pudo generar el video. Comprueba el acceso al modelo y la facturación.'
+        if isinstance(exc, HTTPError):
+            try:
+                detail=json.loads(exc.read()).get('error',{}).get('message','')
+                if isinstance(detail,str) and detail:
+                    error += ' ' + ' '.join(detail.split())[:180]
+            except (ValueError, UnicodeDecodeError):
+                pass
+        elif isinstance(exc, (RuntimeError, ValueError, binascii.Error)):
+            error = str(exc)[:240]
+        with sqlite3.connect(USAGE_DB,timeout=15) as conn:
+            conn.execute("UPDATE ai_video_jobs SET status='failed',error=?,updated_at=? WHERE id=?",
+                         (error,datetime.now(timezone.utc).isoformat(),job_id))
+            conn.commit()
 
 
 def referral_settings():
@@ -594,7 +822,7 @@ def model_catalog_answer(active, registry, message):
     provider = active['providerModel']
     intro = f'Ahora estás conversando con {name} (ID: {identifier}).'
     if any(word in question for word in ('real', 'exact', 'proveedor', 'subyacente', 'openrouter', 'fabricante')):
-        intro += f' El modelo configurado en OpenRouter es {provider}.'
+        intro += f' El modelo real configurado ({active.get("provider", "openrouter")}) es {provider}.'
     if re.search(r'\b(modelos|catalogo|disponibles|tienes|hay|ofreces|lista|muestra|registrados|habilitados)\b', question):
         catalog = '; '.join(
             f'{item["name"]} ({item["id"]})' +
@@ -609,7 +837,7 @@ def add_runtime_model_context(prompt, active, registry):
     # Catálogo leído para ESTA petición desde Firestore appConfig/public.
     catalog = '; '.join(f'{item["name"]} [{item["id"]}]' for item in registry.values())
     return (prompt + '\n\nInformación ACTUAL del servidor (configuración administrativa, no del historial): '
-            + f'Modelo activo: {active["name"]} (ID {active["id"]}; proveedor real {active["providerModel"]}). '
+            + f'Modelo activo: {active["name"]} (ID {active["id"]}; proveedor {active.get("provider", "openrouter")}; modelo real {active["providerModel"]}). '
             + f'Modelos habilitados: {catalog or "ninguno"}. '
             + 'Si te preguntan por tu modelo, usa exactamente estos datos, no listas antiguas de la conversación. '
             + 'No afirmes que un modelo está habilitado si no aparece en la lista. '
@@ -1545,6 +1773,28 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         self.send_json(200, {'ok': True})
 
+    def feedback_delete(self, item_id, admin=False):
+        identity = self.feedback_identity()
+        if identity is None:
+            return
+        if not re.fullmatch(r'local-[0-9a-f-]{36}', item_id):
+            self.send_json(400, {'error': 'Identificador de propuesta no válido.'})
+            return
+        if admin and not feedback_is_admin(identity):
+            self.send_json(403, {'error': 'No tienes permiso para eliminar propuestas ajenas.'})
+            return
+        with sqlite3.connect(USAGE_DB, timeout=12) as conn:
+            if admin:
+                cursor = conn.execute('DELETE FROM feedback_submissions WHERE id=?', (item_id,))
+            else:
+                cursor = conn.execute('DELETE FROM feedback_submissions WHERE id=? AND user_id=?',
+                                      (item_id, identity['localId']))
+            conn.commit()
+        if cursor.rowcount != 1:
+            self.send_json(404, {'error': 'No se encontró una propuesta que puedas eliminar.'})
+            return
+        self.send_json(200, {'ok': True})
+
     def referral_me(self):
         identity = self.feedback_identity()
         if not identity:
@@ -1603,8 +1853,193 @@ class AppHandler(SimpleHTTPRequestHandler):
             'recent': [{'code': row[0], 'inviterTokens': row[1], 'guestTokens': row[2], 'createdAt': row[3]} for row in recent],
         }})
 
+    def ai_admin_keys(self, change=False):
+        identity = self.feedback_identity()
+        if not identity:
+            return
+        if not feedback_is_admin(identity):
+            self.send_json(403, {'error': 'Solo administradores verificados pueden gestionar claves.'})
+            return
+        if change:
+            payload = self.feedback_read_json()
+            if payload is None:
+                return
+            provider = payload.get('provider')
+            if provider not in AI_PROVIDERS:
+                self.send_json(400, {'error': 'Proveedor no válido.'})
+                return
+            action = payload.get('action')
+            if action == 'save':
+                key = payload.get('key')
+                if not isinstance(key, str) or not 10 <= len(key.strip()) <= 512 or any(ch.isspace() for ch in key.strip()):
+                    self.send_json(400, {'error': 'Introduce una clave API válida.'})
+                    return
+                cipher = ai_cipher()
+                if not cipher:
+                    self.send_json(503, {'error': 'Para guardar claves desde el panel configura NEXUS_SECRETS_KEY (Fernet) en el servidor. También puedes definir las API keys como variables de entorno.'})
+                    return
+                secret_cipher = cipher.encrypt(key.strip().encode('utf-8')).decode('ascii')
+                with sqlite3.connect(USAGE_DB, timeout=10) as conn:
+                    conn.execute('INSERT INTO ai_provider_keys(provider, secret_cipher, updated_at) VALUES (?,?,?) ON CONFLICT(provider) DO UPDATE SET secret_cipher=excluded.secret_cipher, updated_at=excluded.updated_at',
+                                 (provider, secret_cipher, datetime.now(timezone.utc).isoformat()))
+                    conn.commit()
+            elif action == 'delete':
+                with sqlite3.connect(USAGE_DB, timeout=10) as conn:
+                    conn.execute('DELETE FROM ai_provider_keys WHERE provider=?', (provider,))
+                    conn.commit()
+            else:
+                self.send_json(400, {'error':'Operación desconocida.'})
+                return
+        self.send_json(200, ai_provider_status())
+
+    def ai_video_settings(self, update=False):
+        identity = self.feedback_identity()
+        if not identity:
+            return
+        if update:
+            if not feedback_is_admin(identity):
+                self.send_json(403, {'error':'Solo los administradores verificados pueden cambiar la generación de video.'})
+                return
+            payload = self.feedback_read_json()
+            if payload is None:
+                return
+            models=('gemini-omni-1.1-flash',)
+            plans=('free','pro','premium','studio')
+            if set(payload) != {'enabled','model','dailyLimit','allowedPlans'} or type(payload['enabled']) is not bool or payload['model'] not in models or type(payload['dailyLimit']) is not int or not 1 <= payload['dailyLimit'] <= 5 or not isinstance(payload['allowedPlans'],list) or any(p not in plans for p in payload['allowedPlans']) or len(set(payload['allowedPlans'])) != len(payload['allowedPlans']):
+                self.send_json(400, {'error':'Los ajustes del video no son válidos.'})
+                return
+            if payload['enabled'] and not payload['allowedPlans']:
+                self.send_json(400, {'error':'Selecciona al menos un plan autorizado.'})
+                return
+            with sqlite3.connect(USAGE_DB, timeout=10) as conn:
+                conn.execute('INSERT INTO ai_video_settings(id,config_json) VALUES (1,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json', (json.dumps(payload),))
+                conn.commit()
+        self.send_json(200, ai_video_config())
+
+    def ai_video_start(self):
+        identity = self.feedback_identity()
+        if not identity:
+            return
+        token = self.headers.get('Authorization', '')[7:].strip()
+        conf = ai_video_config()
+        if not conf['enabled']:
+            self.send_json(403, {'error': 'Generación de video desactivada. Actívala en el panel admin.'})
+            return
+        profile = read_firestore_user_profile(identity['localId'], token) or {}
+        if not ai_video_has_access(profile, identity, conf):
+            self.send_json(403, {'error': 'Tu plan no incluye generación de video IA.'})
+            return
+        key = ai_provider_key('gemini')
+        if not key:
+            self.send_json(503, {'error': 'Configura GEMINI_API_KEY o una clave Gemini desde el panel admin.'})
+            return
+        payload = self.feedback_read_json()
+        if payload is None:
+            return
+        prompt = payload.get('prompt')
+        ratio = payload.get('aspectRatio', '16:9')
+        duration = payload.get('duration', 8)
+        if not isinstance(prompt, str) or not 10 <= len(prompt.strip()) <= 1000:
+            self.send_json(400, {'error': 'Describe la escena en 10 a 1.000 caracteres.'})
+            return
+        if ratio not in ('16:9', '9:16') or type(duration) is not int or duration not in (4, 6, 8):
+            self.send_json(400, {'error': 'Selecciona una proporción y duración válidas.'})
+            return
+        uid = identity['localId']
+        now = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+        job_id = str(uuid.uuid4())
+        with sqlite3.connect(USAGE_DB, timeout=15) as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            conn.execute("UPDATE ai_video_jobs SET status='failed',error='Trabajo interrumpido o vencido.' WHERE user_id=? AND status IN ('starting','pending') AND created_at < ?",
+                         (uid, (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()))
+            daily = conn.execute("SELECT COUNT(*) FROM ai_video_jobs WHERE user_id=? AND created_at>=? AND status!='failed'", (uid, now[:10])).fetchone()[0]
+            active = conn.execute("SELECT COUNT(*) FROM ai_video_jobs WHERE user_id=? AND status IN ('starting','pending')", (uid,)).fetchone()[0]
+            if active or daily >= conf['dailyLimit']:
+                self.send_json(429, {'error': 'Ya tienes un video en proceso o alcanzaste el límite diario.'})
+                return
+            conn.execute("INSERT INTO ai_video_jobs (id,user_id,prompt,model,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+                         (job_id, uid, '', conf['model'], 'pending', now, now))
+            conn.commit()
+        # Interactions es una API de video distinta a predictLongRunning de Veo.
+        # Se lanza en un hilo del servidor para que el navegador consulte el progreso.
+        threading.Thread(target=run_gemini_omni_video, args=(job_id, prompt.strip(), ratio, duration, conf['model'], key), daemon=True).start()
+        self.send_json(202, {'id': job_id, 'status': 'pending'})
+
+    def ai_video_status(self, job_id):
+        identity = self.feedback_identity()
+        if not identity:
+            return
+        if not re.fullmatch(r'[0-9a-f-]{36}', job_id):
+            self.send_json(400, {'error': 'ID de video inválido.'})
+            return
+        with sqlite3.connect(USAGE_DB, timeout=10) as conn:
+            row = conn.execute('SELECT user_id,status,error,created_at FROM ai_video_jobs WHERE id=?', (job_id,)).fetchone()
+        if not row or row[0] != identity['localId']:
+            self.send_json(404, {'error': 'Video no encontrado.'})
+            return
+        status, error = row[1], row[2]
+        if status in ('pending','starting'):
+            try:
+                age = datetime.now(timezone.utc) - datetime.fromisoformat(row[3].replace('Z','+00:00'))
+                if age > timedelta(minutes=20):
+                    with sqlite3.connect(USAGE_DB,timeout=10) as conn:
+                        conn.execute("UPDATE ai_video_jobs SET status='failed',error='La generación tardó demasiado o el servidor se reinició.' WHERE id=? AND status IN ('pending','starting')",(job_id,))
+                        conn.commit()
+                    status, error = 'failed', 'La generación tardó demasiado o el servidor se reinició.'
+            except (TypeError, ValueError):
+                pass
+        self.send_json(200, {'id': job_id, 'status': status, 'error': error,
+                             'videoUrl': f'/api/ai/video/download/{job_id}' if status == 'ready' else None})
+
+    def ai_video_download(self, job_id):
+        identity = self.feedback_identity()
+        if not identity:
+            return
+        if not re.fullmatch(r'[0-9a-f-]{36}', job_id):
+            self.send_json(400, {'error': 'ID inválido.'})
+            return
+        with sqlite3.connect(USAGE_DB, timeout=15) as conn:
+            row = conn.execute('SELECT j.user_id,j.status,a.mp4 FROM ai_video_jobs j LEFT JOIN ai_video_assets a ON j.id=a.job_id WHERE j.id=?',(job_id,)).fetchone()
+        if not row or row[0] != identity['localId'] or row[1] != 'ready' or row[2] is None:
+            self.send_json(404, {'error': 'Video no disponible.'})
+            return
+        data = row[2]
+        self.send_response(200)
+        self.send_header('Content-Type','video/mp4')
+        self.send_header('Content-Length',str(len(data)))
+        self.send_header('Content-Disposition',f'attachment; filename="nexus-video-{job_id[:8]}.mp4"')
+        self.send_header('Cache-Control','private, no-store')
+        self.send_header('X-Content-Type-Options','nosniff')
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def do_GET(self):
         request_url = urlsplit(self.path)
+        # Nunca servir por HTTP la base de datos, sus archivos WAL/SHM o secretos locales.
+        # Por defecto SQLite puede estar junto a index.html; allí almacena datos de usuarios,
+        # claves API cifradas y ahora también los videos generados.
+        public_path = request_url.path.lower()
+        private_name = USAGE_DB.name.lower()
+        if (public_path == '/' + private_name or
+                public_path in ('/' + private_name + '-wal', '/' + private_name + '-shm') or
+                public_path.startswith('/.git/') or public_path in ('/.env', '/.git', '/.nexus_usage.sqlite3')):
+            self.send_json(404, {'error': 'Archivo no disponible.'})
+            return
+        if request_url.path == '/api/admin/ai-keys':
+            self.ai_admin_keys()
+            return
+        if request_url.path == '/api/ai/video/config':
+            self.ai_video_settings()
+            return
+        if request_url.path.startswith('/api/ai/video/status/'):
+            self.ai_video_status(request_url.path.rsplit('/',1)[-1])
+            return
+        if request_url.path.startswith('/api/ai/video/download/'):
+            self.ai_video_download(request_url.path.rsplit('/',1)[-1])
+            return
         if request_url.path == '/api/referrals/me':
             self.referral_me()
             return
@@ -1993,10 +2428,6 @@ class AppHandler(SimpleHTTPRequestHandler):
         if not self.public_api_rate_allowed(record['key_id']):
             self.send_public_json(429, {'error': {'message': 'Límite de una solicitud por segundo por clave.', 'type': 'rate_limit_error'}})
             return
-        api_key = os.environ.get('OPENROUTER_API_KEY', '').strip()
-        if not api_key:
-            self.send_public_json(503, {'error': {'message': 'El proveedor de modelos no está configurado en el servidor.', 'type': 'server_error'}})
-            return
         if not self.headers.get('Content-Type', '').lower().startswith('application/json'):
             self.send_public_json(400, {'error': {'message': 'Envía el cuerpo como application/json.', 'type': 'invalid_request_error'}})
             return
@@ -2055,36 +2486,19 @@ class AppHandler(SimpleHTTPRequestHandler):
         except (json.JSONDecodeError, TypeError):
             self.send_public_json(401, {'error': {'message': 'La clave API no tiene una suscripción válida.', 'type': 'authentication_error'}})
             return
+        user_id = record['user_id']
         quota = token_quotas(profile, model, user_id=user_id)
         system_prompt = build_chat_system_prompt('', '', False, False)
         reserved_tokens = len(system_prompt.encode('utf-8')) + sum(
             len(message['content'].encode('utf-8')) for message in clean_messages
         ) + max_tokens
-        user_id = record['user_id']
         if not reserve_tokens(user_id, reserved_tokens, quota):
             self.send_public_json(402, {'error': {'message': 'Se agotó la cuota de tokens del plan.', 'type': 'insufficient_quota'}})
             return
 
-        request_body = json.dumps({
-            'model': model['providerModel'],
-            'messages': [{'role': 'system', 'content': system_prompt}, *clean_messages],
-            'max_tokens': max_tokens,
-            'temperature': temperature,
-        }).encode('utf-8')
-        upstream = Request(
-            OPENROUTER_URL,
-            data=request_body,
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json',
-                'HTTP-Referer': f'http://127.0.0.1:{self.server.server_port}',
-                'X-Title': 'Nexus Forma API',
-            },
-            method='POST',
-        )
         try:
-            with urlopen(upstream, timeout=90) as response:
-                result = json.loads(response.read())
+            result = call_ai_chat(model, system_prompt, clean_messages, max_tokens,
+                                  temperature=temperature, referer='https://nexusformas.vercel.app')
             choice = result.get('choices', [{}])[0]
             response_message = choice.get('message', {})
             answer = response_message.get('content')
@@ -2125,12 +2539,24 @@ class AppHandler(SimpleHTTPRequestHandler):
             status = 429 if error.code == 429 else 502
             message = 'El proveedor alcanzó su límite temporal.' if error.code == 429 else 'El proveedor no pudo completar la solicitud.'
             self.send_public_json(status, {'error': {'message': message, 'type': 'server_error'}})
+        except (RuntimeError, ValueError) as error:
+            settle_tokens(user_id, reserved_tokens, bucket=quota)
+            self.send_public_json(503 if isinstance(error, RuntimeError) else 400, {'error': {'message': str(error), 'type': 'provider_error'}})
         except (TimeoutError, URLError, json.JSONDecodeError):
             settle_tokens(user_id, reserved_tokens, bucket=quota)
             self.send_public_json(502, {'error': {'message': 'No se pudo conectar con el proveedor de modelos.', 'type': 'server_error'}})
 
     def do_POST(self):
         request_path = urlsplit(self.path).path
+        if request_path == '/api/admin/ai-keys':
+            self.ai_admin_keys(change=True)
+            return
+        if request_path == '/api/admin/ai-video-config':
+            self.ai_video_settings(update=True)
+            return
+        if request_path == '/api/ai/video/start':
+            self.ai_video_start()
+            return
         if request_path == '/api/referrals/claim':
             self.referral_claim()
             return
@@ -2160,11 +2586,6 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         if request_path != '/api/chat':
             self.send_json(404, {'error': 'Ruta no encontrada.'})
-            return
-
-        api_key = os.environ.get('OPENROUTER_API_KEY', '').strip()
-        if not api_key:
-            self.send_json(503, {'error': 'Configura NexusApiKey en el entorno del servidor.'})
             return
 
         authorization = self.headers.get('Authorization', '')
@@ -2228,6 +2649,12 @@ class AppHandler(SimpleHTTPRequestHandler):
         model = model_registry.get(alias)
         if not model:
             self.send_json(400, {'error': 'Selecciona uno de los modelos Nexus disponibles.'})
+            return
+        if not ai_provider_key(model.get('provider', 'openrouter')):
+            self.send_json(503, {'error': f'El proveedor {model.get("provider", "openrouter").upper()} no tiene una API key configurada en el servidor.'})
+            return
+        if web_search and model.get('provider', 'openrouter') != 'openrouter':
+            self.send_json(400, {'error': 'Desactiva Buscar web para usar este proveedor. La búsqueda integrada es de OpenRouter.'})
             return
         if is_text_to_speech_model(model['providerModel']):
             self.send_json(400, {
@@ -2410,29 +2837,9 @@ class AppHandler(SimpleHTTPRequestHandler):
             if audio_data:
                 parts.append({'type': 'input_audio', 'input_audio': {'data': audio_data, 'format': audio_format}})
             provider_messages = [*provider_messages[:-1], {'role': 'user', 'content': parts}]
-        request_body = json.dumps({
-            'model': model['providerModel'],
-            'messages': [{'role': 'system', 'content': system_prompt}, *provider_messages],
-            'max_tokens': output_token_budget,
-            **({'reasoning': {'effort': reasoning_effort}} if reasoning_effort != 'auto' else {}),
-            **({'temperature': 0.7} if reasoning_effort == 'auto' else {}),
-            **({'plugins': [{'id': 'web', 'max_results': 5}]} if web_search else {}),
-        }).encode('utf-8')
-        upstream = Request(
-            OPENROUTER_URL,
-            data=request_body,
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json',
-                'HTTP-Referer': f'http://127.0.0.1:{self.server.server_port}',
-                'X-Title': 'Nexus AI',
-            },
-            method='POST',
-        )
-
         try:
-            with urlopen(upstream, timeout=90) as response:
-                result = json.loads(response.read())
+            result = call_ai_chat(model, system_prompt, provider_messages, output_token_budget,
+                                  reasoning_effort, web_search, referer=f'http://127.0.0.1:{self.server.server_port}')
             response_message = result.get('choices', [{}])[0].get('message', {})
             answer = response_message.get('content')
             if isinstance(answer, list):
@@ -2446,7 +2853,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             completion_tokens = usage.get('completion_tokens')
             if not isinstance(prompt_tokens, int) or not isinstance(completion_tokens, int):
                 settle_tokens(user_id, reserved_tokens, bucket=quota)
-                self.send_json(502, {'error': 'OpenRouter no devolvio el uso de tokens; no se puede actualizar tu cuota.'})
+                self.send_json(502, {'error': 'El proveedor no devolvió el uso de tokens; no se puede actualizar tu cuota.'})
                 return
             settle_tokens(user_id, reserved_tokens, prompt_tokens, completion_tokens, quota)
             record_usage_event(user_id, alias, conversation_id, prompt_tokens, completion_tokens)
@@ -2494,12 +2901,21 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_json(error.code if error.code in (401, 402, 403, 429) else 502, {
                 'error': message
             })
+        except (RuntimeError, ValueError) as error:
+            settle_tokens(user_id, reserved_tokens, bucket=quota)
+            self.send_json(503 if isinstance(error, RuntimeError) else 400, {'error': str(error)})
         except (TimeoutError, URLError, json.JSONDecodeError):
             settle_tokens(user_id, reserved_tokens, bucket=quota)
             self.send_json(502, {'error': 'No se pudo conectar con Nexus. Intentalo de nuevo.'})
 
     def do_DELETE(self):
         request_path = urlsplit(self.path).path
+        if request_path.startswith('/api/admin/feedback/local-'):
+            self.feedback_delete(request_path.rsplit('/',1)[-1], admin=True)
+            return
+        if request_path.startswith('/api/feedback/local-'):
+            self.feedback_delete(request_path.rsplit('/',1)[-1])
+            return
         prefix = '/api/developer/keys/'
         if request_path.startswith(prefix):
             self.revoke_developer_api_key(request_path[len(prefix):])

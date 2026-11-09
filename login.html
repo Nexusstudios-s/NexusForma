@@ -26,7 +26,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/theme.css">
   <link rel="stylesheet" href="css/login.css">
-  <link rel="stylesheet" href="css/fit2.css">
+  <link rel="stylesheet" href="css/fit.css">
+  <link rel="stylesheet" href="css/referrals.css">
 <style>
 
   /* Aviso legal integrado en login · aislado del formulario de autenticación */
@@ -72,6 +73,7 @@
         <p class="intro" id="intro">Inicia sesión para continuar en tu espacio creativo.</p>
         <div class="tabs" role="tablist" aria-label="Tipo de acceso"><button class="selected" id="loginTab" type="button" role="tab" aria-selected="true">Iniciar sesión</button><button id="registerTab" type="button" role="tab" aria-selected="false">Crear cuenta</button></div>
         <button class="google" id="googleButton" type="button"><span class="google-g" aria-hidden="true">G</span>Continuar con Google</button>
+        <div class="referral-login-tag" id="referralLoginTag" hidden><span class="referral-login-icon">✦</span><div><strong>¡Llegaste con una invitación!</strong><small>Después de registrarte podrás activar el código <b id="referralLoginCode"></b> y recibir tokens de regalo.</small></div></div>
         <div class="divider">o con tu correo</div>
         <form id="authForm" novalidate>
           <label class="field" id="nameField" hidden>Tu nombre<input id="displayName" name="name" autocomplete="name" maxlength="80" placeholder="Cómo te llamas"></label>
