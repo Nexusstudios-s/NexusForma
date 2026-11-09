@@ -1,0 +1,185 @@
+/* Nexus Forma · Detalles luminosos 2026
+   Modal de borrado de respuesta, botones glass y tarjetas de Inicio / Mini agentes.
+   No altera el grid del chat, las cuotas ni otros modales. */
+
+/* 1. Acciones de las respuestas: cristal real y sin oscurecer el fondo. */
+.nexus-ai-answer-actions {
+  background: color-mix(in srgb, var(--glass-2) 84%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  backdrop-filter: blur(18px) saturate(1.35);
+  border-color: var(--stroke-2);
+  box-shadow: inset 0 1px 0 var(--inner), 0 8px 24px rgba(0, 0, 0, .09);
+}
+.nexus-ai-answer-button {
+  background: color-mix(in srgb, var(--glass) 82%, transparent);
+  border-color: var(--stroke);
+  -webkit-backdrop-filter: blur(12px) saturate(1.25);
+  backdrop-filter: blur(12px) saturate(1.25);
+}
+.nexus-ai-answer-button:hover {
+  background: var(--glass-2);
+  box-shadow: inset 0 1px 0 var(--inner);
+}
+
+/* 2. Confirmación de borrado por mensaje (no confundir con borrar el historial entero). */
+#chatAnswerDeleteDialog.nexus-ai-delete-dialog {
+  width: min(476px, calc(100vw - 28px));
+  max-width: 476px;
+  max-height: calc(100dvh - 28px);
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: var(--text);
+  border: 1px solid var(--stroke-2);
+  border-radius: 26px;
+  background: var(--dialog-bg);
+  -webkit-backdrop-filter: blur(32px) saturate(1.5);
+  backdrop-filter: blur(32px) saturate(1.5);
+  box-shadow: 0 36px 110px rgba(0,0,0,.36), inset 0 1px 0 var(--inner);
+}
+#chatAnswerDeleteDialog::backdrop {
+  background: rgba(5, 8, 16, .55);
+  -webkit-backdrop-filter: blur(15px) saturate(1.08);
+  backdrop-filter: blur(15px) saturate(1.08);
+}
+#chatAnswerDeleteDialog[open] { animation: nexusDeleteAppear .23s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes nexusDeleteAppear { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.nexus-ai-delete-panel {
+  padding: 26px;
+  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 64%),
+              radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--cool) 7%, transparent), transparent 62%);
+}
+.nexus-ai-delete-top {display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px;}
+.nexus-ai-delete-brand {display:inline-flex; align-items:center; gap:7px; color:var(--text-2); font-size:10px; font-weight:850; letter-spacing:.11em;}
+.nexus-ai-delete-brand span {color:var(--accent-text); font-size:18px; line-height:1;}
+.nexus-ai-delete-brand i {color:var(--text-3); font-style:normal;}
+.nexus-ai-delete-x {
+  width:32px; height:32px; flex:none; display:grid; place-items:center;
+  border:1px solid var(--stroke); border-radius:10px; background:var(--glass-2);
+  color:var(--text-2); font-size:22px; font-weight:400; cursor:pointer;
+  -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+}
+.nexus-ai-delete-x:hover {border-color:var(--stroke-2); color:var(--text);}
+.nexus-ai-delete-mark {
+  width:58px; height:58px; display:grid; place-items:center;
+  margin-bottom:17px; border:1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+  border-radius:18px; background:color-mix(in srgb, var(--danger) 10%, transparent);
+  color:var(--danger); box-shadow:inset 0 1px 0 var(--inner), 0 12px 30px -24px var(--danger);
+}
+.nexus-ai-delete-mark svg {width:25px; height:25px;}
+.nexus-ai-delete-panel h2 {margin:0; color:var(--text); font:800 clamp(22px,3vw,27px)/1.15 var(--font-display); letter-spacing:-.035em;}
+.nexus-ai-delete-panel > p {margin:10px 0 0; max-width:380px; color:var(--text-2); font-size:13px; line-height:1.65;}
+.nexus-ai-delete-preview {
+  display:grid; gap:10px; min-width:0; margin-top:21px; padding:15px 16px;
+  border:1px solid var(--stroke); border-radius:15px; background:var(--glass);
+  -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+}
+.nexus-ai-delete-preview span {color:var(--text-3); font-size:9px; font-weight:800; letter-spacing:.11em;}
+.nexus-ai-delete-preview p {
+  margin:0; color:var(--text-2); font-size:12px; line-height:1.6;
+  overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden;
+}
+.nexus-ai-delete-actions {display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; margin-top:23px;}
+.nexus-ai-delete-actions button {
+  min-height:46px; padding:10px 13px; display:inline-flex; align-items:center; justify-content:center;
+  gap:8px; border:1px solid var(--stroke-2); border-radius:12px;
+  font-family:inherit; font-size:12px; font-weight:750; cursor:pointer;
+  transition:background .2s ease, border-color .2s ease, transform .2s ease;
+  -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
+}
+.nexus-ai-delete-actions button:hover {transform:translateY(-1px);}
+.nexus-ai-delete-cancel {background:var(--glass-2); color:var(--text);}
+.nexus-ai-delete-cancel:hover {background:var(--glass-3);}
+.nexus-ai-delete-accept {background:color-mix(in srgb,var(--danger) 17%,transparent); color:var(--danger); border-color:color-mix(in srgb,var(--danger) 34%,transparent) !important;}
+.nexus-ai-delete-accept:hover {background:color-mix(in srgb,var(--danger) 25%,transparent);}
+.nexus-ai-delete-accept svg {width:16px; height:16px; flex:none;}
+.nexus-ai-delete-x:focus-visible, .nexus-ai-delete-actions button:focus-visible {outline:2px solid var(--accent); outline-offset:3px;}
+
+/* 3. Tarjetas de Inicio y Mini agentes: movimiento suave y reflejos claros.
+   Nunca añadimos una capa oscura al pasar el mouse. */
+#view-home :is(.home-example,.home-action-card,.home-resume-button,.home-agent-list button),
+#view-agents :is(.mini-agent-template-card,.mini-agent-card) {
+  position:relative;
+  isolation:isolate;
+  transition:transform .28s cubic-bezier(.22,.75,.24,1), border-color .25s ease, box-shadow .28s ease, background .25s ease;
+}
+#view-home :is(.home-example,.home-action-card,.home-resume-button),
+#view-agents :is(.mini-agent-template-card,.mini-agent-card) {overflow:hidden;}
+#view-home :is(.home-example,.home-action-card,.home-resume-button,.home-agent-list button)::after,
+#view-agents :is(.mini-agent-template-card,.mini-agent-card)::after {
+  position:absolute; inset:0; border-radius:inherit;
+  content:""; z-index:0; opacity:0; pointer-events:none;
+  background:radial-gradient(230px circle at var(--nexus-shine-x,50%) var(--nexus-shine-y,50%),
+    color-mix(in srgb,var(--accent) 16%,transparent),
+    color-mix(in srgb,var(--cool) 4%,transparent) 44%,transparent 76%);
+  transition:opacity .25s ease;
+}
+#view-home :is(.home-example,.home-action-card,.home-resume-button,.home-agent-list button) > *,
+#view-agents :is(.mini-agent-template-card,.mini-agent-card) > * {position:relative; z-index:1;}
+#view-agents .mini-agent-template-card:hover {background: var(--glass-2); border-color:var(--accent-line);}
+#view-agents .mini-agent-template-card.is-active:hover {background:linear-gradient(130deg,var(--accent-soft),var(--glass-2));}
+#view-agents .mini-agent-card:hover {background:var(--glass-2); border-color:var(--accent-line);}
+#view-home .home-agent-list button:hover {background:var(--glass-2);}
+#view-home .home-example:hover,#view-home .home-action-card:hover,
+#view-agents .mini-agent-template-card:hover,#view-agents .mini-agent-card:hover {
+  box-shadow:inset 0 1px 0 var(--inner), 0 14px 30px -24px color-mix(in srgb,var(--accent) 40%,transparent);
+}
+#view-home :is(.home-example,.home-action-card,.home-resume-button,.home-agent-list button):hover::after,
+#view-agents :is(.mini-agent-template-card,.mini-agent-card):hover::after {opacity:1;}
+#view-home .home-action-card:hover .home-action-icon {border-color:var(--accent-line); box-shadow:0 0 0 4px var(--accent-soft);}
+#view-home .home-hero-image {transition: transform 1.1s cubic-bezier(.2,.8,.2,1);}
+#view-home .home-hero:hover .home-hero-image {transform:scale(1.03);}
+#view-home .home-section-heading h2 {position:relative; padding-bottom:8px;}
+#view-home .home-section-heading h2::after {
+  position:absolute; left:0; bottom:0; width:34px; height:2px; border-radius:99px;
+  background:linear-gradient(90deg,var(--accent),var(--cool)); content:"";
+  transition:width .35s ease;
+}
+#view-home .home-section:hover .home-section-heading h2::after {width:65px;}
+
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference) {
+  #view-home :is(.home-example,.home-action-card,.home-resume-button,.home-agent-list button).nexus-follow-active,
+  #view-agents :is(.mini-agent-template-card,.mini-agent-card).nexus-follow-active {
+    transform:perspective(900px) rotateX(var(--nexus-tilt-x,0deg)) rotateY(var(--nexus-tilt-y,0deg)) translateY(-3px);
+    border-color:var(--accent-line);
+    will-change:transform;
+  }
+}
+@media (max-width: 620px) {
+  #chatAnswerDeleteDialog.nexus-ai-delete-dialog {width:calc(100vw - 22px); border-radius:21px;}
+  .nexus-ai-delete-panel {padding:21px;}
+  .nexus-ai-delete-actions {grid-template-columns:1fr;}
+  .nexus-ai-delete-actions button {min-height:44px;}
+  #view-home .home-hero:hover .home-hero-image {transform:none;}
+}
+@media (prefers-reduced-motion: reduce) {
+  #chatAnswerDeleteDialog[open] {animation:none;}
+  #view-home :is(.home-example,.home-action-card,.home-resume-button,.home-agent-list button),
+  #view-agents :is(.mini-agent-template-card,.mini-agent-card),
+  #view-home .home-hero-image {transition:none; transform:none;}
+  #view-home .home-hero:hover .home-hero-image {transform:none;}
+}
+
+/* Entrada escalonada y movimiento de los detalles. También se aprecia en móvil. */
+@media (prefers-reduced-motion: no-preference) {
+  #view-agents.active .mini-agent-template-card,
+  #view-agents.active .mini-agent-card,
+  #view-home.active .home-example,
+  #view-home.active .home-action-card {
+    animation: nexusSoftReveal .42s cubic-bezier(.22,.8,.25,1) both;
+  }
+  #view-agents.active :is(.mini-agent-template-card,.mini-agent-card):nth-child(2),
+  #view-home.active :is(.home-example,.home-action-card):nth-child(2) {animation-delay:.055s;}
+  #view-agents.active :is(.mini-agent-template-card,.mini-agent-card):nth-child(3),
+  #view-home.active :is(.home-example,.home-action-card):nth-child(3) {animation-delay:.105s;}
+  #view-agents.active :is(.mini-agent-template-card,.mini-agent-card):nth-child(n+4),
+  #view-home.active :is(.home-example,.home-action-card):nth-child(n+4) {animation-delay:.15s;}
+  @keyframes nexusSoftReveal {
+    from {opacity:.45; translate:0 9px;}
+    to {opacity:1; translate:0 0;}
+  }
+  #view-agents .mini-agent-template-icon,
+  #view-home .home-action-icon {transition: transform .32s cubic-bezier(.2,.8,.25,1),box-shadow .32s ease,border-color .32s ease;}
+  #view-agents .mini-agent-template-card:hover .mini-agent-template-icon {transform:rotate(-6deg) scale(1.075);box-shadow:0 0 0 4px var(--accent-soft);}
+  #view-home .home-action-card:hover .home-action-icon {transform:rotate(5deg) scale(1.065);}
+}
