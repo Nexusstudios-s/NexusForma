@@ -1,4 +1,5 @@
 import base64
+import community_backend
 import binascii
 import hashlib
 import io
@@ -2017,12 +2018,21 @@ class AppHandler(SimpleHTTPRequestHandler):
             pass
 
     def do_GET(self):
+        if community_backend.handle(self, 'GET', __import__(__name__)):
+            return
         request_url = urlsplit(self.path)
         # Nunca servir por HTTP la base de datos, sus archivos WAL/SHM o secretos locales.
         # Por defecto SQLite puede estar junto a index.html; allí almacena datos de usuarios,
         # claves API cifradas y ahora también los videos generados.
         public_path = request_url.path.lower()
         private_name = USAGE_DB.name.lower()
+        if (public_path.endswith(('.py', '.pyc', '.sqlite3', '.sqlite', '.rules', '.bak', '.db')) or
+                '/__pycache__/' in public_path or
+                public_path.startswith('/.nexus_') or
+                public_path.startswith('/.git/') or
+                public_path in ('/.env', '/.env.local')):
+            self.send_json(404, {'error': 'Archivo no disponible.'})
+            return
         if (public_path == '/' + private_name or
                 public_path in ('/' + private_name + '-wal', '/' + private_name + '-shm') or
                 public_path.startswith('/.git/') or public_path in ('/.env', '/.git', '/.nexus_usage.sqlite3')):
@@ -2547,6 +2557,8 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_public_json(502, {'error': {'message': 'No se pudo conectar con el proveedor de modelos.', 'type': 'server_error'}})
 
     def do_POST(self):
+        if community_backend.handle(self, 'POST', __import__(__name__)):
+            return
         request_path = urlsplit(self.path).path
         if request_path == '/api/admin/ai-keys':
             self.ai_admin_keys(change=True)
@@ -2908,7 +2920,14 @@ class AppHandler(SimpleHTTPRequestHandler):
             settle_tokens(user_id, reserved_tokens, bucket=quota)
             self.send_json(502, {'error': 'No se pudo conectar con Nexus. Intentalo de nuevo.'})
 
+    def do_PATCH(self):
+        if community_backend.handle(self, 'PATCH', __import__(__name__)):
+            return
+        self.send_json(404, {'error': 'Ruta no encontrada.'})
+
     def do_DELETE(self):
+        if community_backend.handle(self, 'DELETE', __import__(__name__)):
+            return
         request_path = urlsplit(self.path).path
         if request_path.startswith('/api/admin/feedback/local-'):
             self.feedback_delete(request_path.rsplit('/',1)[-1], admin=True)
